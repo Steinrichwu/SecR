@@ -39,7 +39,7 @@ SRDaily=SR()
 N.Analyst_history()
 print("analyst_history_updated")
 DC.Tradingday()
-DC.Dailyreturn_Update_Daily()
+#DC.Dailyreturn_Update_Daily()
 dailyreturn=DC.Dailyreturn_retrieve()
 today=dailyreturn['date'].max()
 rebalday=[str(today)[0:10]]
@@ -142,7 +142,7 @@ def Getcurrentholding(topanalsyt,dailyreturn,rebaldaylist):
 def Generate_Analystpicks(dailyreturn):
     daylist=list(dailyreturn['date'].unique())
     daylist.sort()
-    analystrebalday=daylist[-7]                                                            #7 trading days ago
+    analystrebalday=daylist[-2]                                                            #7 trading days ago
     rebaldaylist=[str(analystrebalday)[0:10]]
     activepickNS,TAH,top30p=TA.Top_analyst_nonSector(dailyreturn,rebaldaylist,60,'CSI800') #activeNS,skipped the intersection part
     holding_top30p=Getcurrentholding(top30p,dailyreturn,rebaldaylist)
@@ -183,6 +183,6 @@ def SecRDaily():
     topsecname.to_csv("D:/CompanyData/TopSector_"+rebaldaylist[0]+".csv",encoding='utf-8-sig',index=False)
     return(topsecname)
 
-gentable=Combine(dailyreturn,rebalday)
+#gentable=Combine(dailyreturn,rebalday)
 AP=Generate_Analystpicks(dailyreturn)
-topsecname=SecRDaily()
+#topsecname=SecRDaily()

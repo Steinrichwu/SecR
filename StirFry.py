@@ -11,24 +11,20 @@ DC=DataCollect()
 DS=DataStructuring()
 
 def Shen567(ifunion):
-    rebal_period=20
     shen6=pd.read_csv("D:/SecR/Shen6_Stocks.csv")
     startdate=shen6['date'].min()
-    rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
-    olddaylist=list(shen6['date'].unique())
-    daylistmerge=DS.Daymerge(olddaylist,rebaldaylist)
-    daydict=dict(zip(daylistmerge['date'],daylistmerge['oldday']))
+    shen6daylist=list(shen6['date'].unique())
     shen6=shen6.loc[~shen6['ticker'].str.contains('.HK'),:]
     shen6['ticker']=shen6['ticker'].str[0:6]
-    ThreeFour=pd.read_csv("D:/SecR/Analyst34stocks_2007_WD.csv")
+    ThreeFour=pd.read_csv("D:/SecR/ThreeFour.csv")
     ThreeFour=ThreeFour.loc[ThreeFour['date']>=startdate,:]
     ThreeFour['ticker']=[str(x).zfill(6) for x in ThreeFour['ticker']]
-    olddaylist=list(ThreeFour['date'].unique())
-    daylistmerge2=DS.Daymerge(olddaylist,rebaldaylist)
-    daydict2=dict(zip(daylistmerge2['date'],daylistmerge2['oldday']))
+    rebaldaylist=list(ThreeFour['date'].unique())
+    daylistmerge=DS.Daymerge(shen6daylist,rebaldaylist)
+    daydict=dict(zip(daylistmerge['date'],daylistmerge['oldday']))            #daydict, given rebalday, return the day should be used for Shen6
     newuniversetab=pd.DataFrame(columns=['ticker','date'])
     for rebalday in rebaldaylist[1:]:
-        Threefourdate=daydict2[rebalday]
+        Threefourdate=rebalday
         Threefourmemb=list(ThreeFour.loc[ThreeFour['date']==Threefourdate,'ticker'])
         shen6date=daydict[rebalday]
         shen6memb=list(shen6.loc[shen6['date']==shen6date,'ticker'])

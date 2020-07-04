@@ -95,7 +95,7 @@ class DataCollect():
     #Download RSI from Database
     def RSI_Db(self,rebalday):
         ms = MSSQL(host="10.27.10.10:1433",user="hyzb",pwd="hyzb2018",db="hyzb")
-        sql="select CODE, rsi_24d from BASIC_PRICE_HIS H where  TIME='"+rebalday+"'"
+        sql="select CODE, 1/rsi_24d from BASIC_PRICE_HIS H where  TIME='"+rebalday+"'"
         reslist=ms.ExecNonQuery(sql)
         df=pd.DataFrame(reslist.fetchall())
         df.columns=['ticker','RSIB']

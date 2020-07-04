@@ -15,7 +15,6 @@ from Querybase import Query
 from scipy import stats
 from itertools import chain
 from Quant import Optimize
-from HotStock import SecR
 
 DC=DataCollect()
 RC=ReturnCal()
@@ -23,8 +22,7 @@ DS=DataStructuring()
 Q=Query()
 WS=WeightScheme()
 Opt=Optimize()
-SR=SecR()
-#rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
+
 class Prep():
     def __init__(self):
         pass
@@ -66,33 +64,6 @@ class Prep():
                 sigtab=sigtab.rename(columns={'date':'enddate'})
                 sigtab=sigtab.rename(columns={signal:'sigvalue'})
                 sigtab=sigtab[['publdate','enddate','ticker','sigvalue']]
-            elif signal in (['RSI24d']):
-                sigtab=pd.DataFrame(columns=['date','ticker','RSI'])
-                for rebalday in rebaldaylist:
-                    newrsitab=DC.RSI24(dailyreturn,rebalday)
-                    newrsitab['RSI']=1/newrsitab['RSI']
-                    sigtab=sigtab.append(newrsitab)
-                sigtab['publdate']=sigtab['date']
-                sigtab.columns=['enddate','ticker','sigvalue','publdate']
-                sigtab=sigtab[['publdate','enddate','ticker','sigvalue']]
-            elif signal in (['RSIB']):
-                sigtab=pd.DataFrame(columns=['publdate','enddate','ticker','RSIB'])
-                for rebalday in rebaldaylist:
-                    print(rebalday)
-                    newrsitab=DC.RSI_Db(rebalday)
-                    sigtab=sigtab.append(newrsitab)
-                sigtab.columns=['publdate','enddate','ticker','sigvalue']
-            elif signal in (['SectorAlpha']):
-                sigtab=DC.LStermSec(rebaldaylist)              #180/10day signal combined
-                #sigtab=DC.StockSectorCumreturn(rebaldaylist,'ITD') #ITD return as a signal
-                sigtab.columns=['enddate','ticker','primecode','sigvalue']
-                sigtab.insert(0,column='publdate',value=sigtab['enddate'])
-                sigtab=sigtab[['publdate','enddate','ticker','sigvalue']]
-            elif signal in (['Hotsector']):
-                sigtab=SR.HotsectorSignal(dailyreturn,rebaldaylist)
-                sigtab.columns=['enddate','ticker','pirmecode','sigvalue']
-                sigtab.insert(0,column='publdate',value=sigtab['enddate'])
-                sigtab=sigtab[['publdate','enddate','ticker','sigvalue']]
             else:
                 sigtab=self.Funda_download(startdate,signal)
             sigtab['signame']=signal
@@ -100,7 +71,7 @@ class Prep():
             sighist=sighist.append(sigtab,ignore_index=True,sort=False)
         sighist=sighist.loc[sighist['sigvalue'].isnull()==False,:]
         sighist=sighist.sort_values(by=['ticker','publdate'],ascending=[True,True])
-        sighist=sighist.loc[sighist['ticker'].str[0].isin(['6','0','3'])]           #Ashs only 6:shanghai,0:shenzhen,3:Chinext
+        sighist=sighist.loc[sighist['ticker'].str[0].isin(['6','0','3'])]
         sighist['publdate']=pd.to_datetime(sighist['publdate'])
         return(sighist)
 
@@ -165,47 +136,10 @@ class Funda():
             current_sig=current_sig.loc[current_sig['ticker'].isin(Mcap_rebalday['ticker']),:]
             for sig in selectsigs:
                 current_onesigWSMcapDummy,Xset=self.Current_one_signal(sig,current_sig,rebalday,Mcap_rebalday,stock_sector) #Prepare the table with sector dummy and marketcap, to be neutrliazed
-                if sig in ['SectorAlpha','HotSector']:
-                    Xset=['mcap']
                 sig_rebalday=DS.Neutralization(current_onesigWSMcapDummy,sig,Xset)                                          #Neutralized sig values
                 sig_rebalday=sig_rebalday.rename(columns={'sigvalue':sig})
                 sig_rebalday=DS.Winsorize(sig_rebalday,'N_'+sig,0.05) 
                 sig_rebalday[sig+'_zscore']=stats.zscore(sig_rebalday['N_'+sig])
-                if sig=='SectorAlpha':
-                    eightypercentile=np.percentile(sig_rebalday[sig+'_zscore'],80) #85 has the best monotonicity so far
-                    sig_rebalday.loc[sig_rebalday[sig+'_zscore']>=eightypercentile,sig+'_zscore']= sig_rebalday.loc[sig_rebalday[sig+'_zscore']>=eightypercentile,sig+'_zscore']-eightypercentile
-                nsigdict[sig+'_'+rebalday]=sig_rebalday
-        return(nsigdict)
-    
-    #Test stocks in a particular universe. ThreeFour is the universe's historical membs: date and tickers
-    def NSighistTEST(self,dailyreturn,rebaldaylist,sighist,selectsigs,ThreeFour):
-        sighist=sighist.loc[sighist['sigvalue'].isnull()==False,:]
-        tickerlist=sighist['ticker'].unique().tolist()
-        stock_sector=DC.Stock_sector(rebaldaylist,tickerlist,'CITIC')
-        rdailyreturn=dailyreturn.loc[dailyreturn['date'].isin(rebaldaylist),:].copy()
-        rdailyreturn['mcap']=rdailyreturn['mcap'].apply(np.log)
-        nsigdict={}
-        for rebalday in rebaldaylist:
-            print(rebalday)
-            activestocks_rebalday=ThreeFour.loc[(ThreeFour['date']==rebalday),:]['ticker'].unique().tolist() #stocks that are tradign on rebalday
-            rebaldatetime=pd.to_datetime(rebalday)
-            sighist['updatelag']=(sighist['publdate']-rebaldatetime).dt.days                                   #current sig is the snapshot of siglist in the last ENDdate prior to rebal day
-            current_sig=sighist.loc[(sighist['updatelag']>=-180)&(sighist['updatelag']<=0),:].copy()                  #remove the entries where publish dates is more than half a year ago
-            current_sig=current_sig.loc[current_sig['ticker'].isin(activestocks_rebalday),:]                   #only stocks tradign on rebalday participate in the analysis
-            Mcap_rebalday=rdailyreturn.loc[(rdailyreturn['date']==rebalday)&(rdailyreturn['ticker'].isin(current_sig['ticker'].unique())),:].copy()
-            #Mcap_rebalday=Mcap_rebalday.loc[Mcap_rebalday['mcap']>np.percentile(Mcap_rebalday['mcap'],30),:].copy() #If used ThreeFour, then no need to cap 30%mcap
-            current_sig=current_sig.loc[current_sig['ticker'].isin(Mcap_rebalday['ticker']),:]
-            for sig in selectsigs:
-                current_onesigWSMcapDummy,Xset=self.Current_one_signal(sig,current_sig,rebalday,Mcap_rebalday,stock_sector) #Prepare the table with sector dummy and marketcap, to be neutrliazed
-                if sig in ['SectorAlpha','HotSector']:
-                    Xset=['mcap']
-                sig_rebalday=DS.Neutralization(current_onesigWSMcapDummy,sig,Xset)                                          #Neutralized sig values
-                sig_rebalday=sig_rebalday.rename(columns={'sigvalue':sig})
-                sig_rebalday=DS.Winsorize(sig_rebalday,'N_'+sig,0.05) 
-                sig_rebalday[sig+'_zscore']=stats.zscore(sig_rebalday['N_'+sig])
-                if sig=='SectorAlpha':
-                    eightypercentile=np.percentile(sig_rebalday[sig+'_zscore'],85) #85 has the best monotonicity so far
-                    sig_rebalday.loc[sig_rebalday[sig+'_zscore']>=eightypercentile,sig+'_zscore']= sig_rebalday.loc[sig_rebalday[sig+'_zscore']>=eightypercentile,sig+'_zscore']-eightypercentile
                 nsigdict[sig+'_'+rebalday]=sig_rebalday
         return(nsigdict)
     
@@ -214,18 +148,14 @@ class Funda():
     def Factorscore(self,rebaldaylist,nsigdict,facname,siginfac,factorZ):
         siginfacz=[sig+'_zscore' for sig in siginfac]
         for rebalday in rebaldaylist:
-            print(rebalday)
             zscoretab=pd.DataFrame(nsigdict[siginfac[0]+'_'+rebalday]['ticker'],columns=['ticker'])
             for sig in siginfac:
                 zscoretab=pd.merge(zscoretab,nsigdict[sig+'_'+rebalday][['ticker',sig,'N_'+sig,sig+'_zscore']],on='ticker',how='outer')
             #zscoretab=zscoretab.dropna()
             #zscoretab=zscoretab.reset_index(drop=True)
             zscoretab[facname+'_zscore']=np.nanmean(zscoretab[siginfacz],axis=1)
-            zscoretab=zscoretab.replace([np.inf, -np.inf], np.nan)
-            zscoretab=zscoretab.dropna()
-            if len(siginfacz)>1:
-                zscoretab[facname+'_zscore']=stats.zscore(zscoretab[facname+'_zscore'])
-            zscoretab['Q']=pd.qcut(zscoretab[facname+'_zscore'],5,labels=[1,2,3,4,5],duplicates='drop')  #return the grouping of the signame column of a dataframe
+            zscoretab[facname+'_zscore']=stats.zscore(zscoretab[facname+'_zscore'])
+            zscoretab['Q']=pd.qcut(zscoretab[facname+'_zscore'],5,labels=[1,2,3,4,5])  #return the grouping of the signame column of a dataframe
             factorZ[facname+'_'+rebalday]=zscoretab
         return(factorZ)
     
@@ -241,33 +171,16 @@ class Funda():
         return(portdict)
     
     #Produce the Fzdict (each factor's zscore on every stock on ONE rebalday: 'Quality_2019-05-06')
-    def Fzdict(self,dailyreturn,rebaldaylist,facdict):
-        selectsigs=[]
-        [selectsigs.extend(v) for k, v in facdict.items()]
-        siglist=list(set([x.replace('growth','') for x in selectsigs]))
-        siglist=list(set([x.replace('vol','') for x in siglist]))     #the original signal before 'growth','vol'
-        facnamelist=list(facdict.keys())                              #factors
-        #rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
-        sighist=self.P.SigdataPrep(dailyreturn,siglist,rebaldaylist)                                #All fundadata of basic signals
-        sighist=DS.GrowVol(sighist,'grow')                                                          #All growthdata of basic signals
-        nsigdict=self.NSighist(dailyreturn,rebaldaylist,sighist,selectsigs)                         #Neutralize selected signals over rebaldaylist
-        fzdict={}
-        for facname in facnamelist:
-            siginfac=facdict[facname]
-            fzdict=self.Factorscore(rebaldaylist,nsigdict,facname,siginfac,fzdict)                #calculate added zscore of factor and Group it into 5Q
-        return(fzdict)
-        
-    #The TEST module is used to take intersection of ThreeFouR (Analyst rating 3+, generated by TAfour in AnalystStock.py)
-    #Produce the Fzdict (each factor's zscore on every stock on ONE rebalday: 'Quality_2019-05-06')
-    def FzdictTEST(self,dailyreturn,rebaldaylist,facdict,ThreeFour):
+    def Fzdict(self,dailyreturn,startdate,rebal_period,facdict):
         selectsigs=[]
         [selectsigs.extend(v) for k, v in facdict.items()]
         siglist=list(set([x.replace('growth','') for x in selectsigs]))
         siglist=list(set([x.replace('vol','') for x in siglist]))
         facnamelist=list(facdict.keys())
+        rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
         sighist=self.P.SigdataPrep(dailyreturn,siglist,rebaldaylist)                                #All fundadata of basic signals
         sighist=DS.GrowVol(sighist,'grow')                                                          #All growthdata of basic signals
-        nsigdict=self.NSighistTEST(dailyreturn,rebaldaylist,sighist,selectsigs,ThreeFour)                       #Neutralize selected signals over rebaldaylist
+        nsigdict=self.NSighist(dailyreturn,rebaldaylist,sighist,selectsigs)                       #Neutralize selected signals over rebaldaylist
         fzdict={}
         for facname in facnamelist:
             siginfac=facdict[facname]
@@ -294,6 +207,52 @@ class Funda():
             fztab=fztab.append(rebalztab)
         #fztab=fztab.drop('index', 1)
         return(fztab)
+        
+    #Crosssectional_regression to generate 因子收益率
+    #rebalday='2019-12-27' rebalstart='2019-12-30' rebalend='2019-12-30'
+    def CrossSec_regress(self,fztab,dailyreturn,lookback_period):
+        rebaldaylist=fztab['date'].unique()
+        rebaldaylist.sort()
+        Xset=list(set(fztab.columns).difference(['date','ticker']))
+        tickerlist=fztab['ticker'].unique()
+        stock_sector=self.DC.Stock_sector(rebaldaylist,tickerlist,'CSI')
+        for rebalday in rebaldaylist:
+            print(rebalday)
+            rebalstart,rebalend=DC.BTdays(rebalday,lookback_period)
+            fztabrebal=fztab.loc[fztab['date']==rebalday,:]
+            fztabrebal=fztabrebal.dropna()
+            fztabrebal=fztabrebal.reset_index(drop=True)
+            othorebal=DS.Othogonize(fztabrebal.drop('date',1))                                                    #先正交化Factor exposure
+            pnlrebal=DC.Period_PNL(dailyreturn,othorebal,rebalstart,rebalend)
+            othorebal=pd.merge(othorebal,pnlrebal[['ticker','dailyreturn']],on=['ticker'],how='left')
+            othorebal['date']=rebalday
+            othorebal=DS.Mcap_sector(stock_sector,dailyreturn,othorebal)
+            othorebal['country']=1
+            industry_weight=pd.DataFrame(othorebal.groupby(['primecode'])['mcap'].sum())
+            industry_weight.reset_index(inplace=True)
+            industry_weight['w']=-industry_weight['mcap']/industry_weight.iloc[industry_weight.shape[0]-1,industry_weight.shape[1]-1]
+            colnames=['date','ticker','mcap','country']+Xset+sorted(set(othorebal['primecode']))                   #Re-arrange the column order for Constrianted WLS
+            k=len(Xset+sorted(set(othorebal['primecode'])))+1                                                      #K:因子个数,Xset个style因子+行业因子+1个国家因子（市场因子）
+            othorebal=othorebal[colnames] 
+            X=othorebal[['country']+Xset+sorted(set(othorebal['primecode']))]
+        return(othorebal,X)
+            #Y='dailyreturn'
+            #coefftab.append(DS.WLS(othorebal,Y,Xset,'recisqrtMcap'))
+        #coefftab=pd.DataFrame(coefftab)
+        #return(coefftab)
+    
+    
+   
+      #  othorebal['country']=1
+     #   industry_weight=pd.DataFrame(othorebal.groupby(['primecode'])['mcap'].sum())
+     #   industry_weight.reset_index(inplace=True)
+    #    industry_weight['w']=-industry_weight['mcap']/industry_weight.iloc[industry_weight.shape[0]-1,industry_weight.shape[1]-1]
+    #    colnames=['date','ticker','mcap','country']+Xset+sorted(set(othorebal['primecode']))                   #Re-arrange the column order for Constrianted WLS
+   #     return(othorebal)
+        #k=len(Xset+sorted(set(othorebal['primecode'])))+1                                                      #K:因子个数,Xset个style因子+行业因子+1个国家因子（市场因子）
+        #othorebal=othorebal[colnames] 
+        #X=othorebal[['country']+Xset+sorted(set(othorebal['primecode']))]
+        #return(othorebal,X)   
             
     #dailyreturn=DC.Dailyreturn_retrieve()
     #startdate='2006-12-28'
@@ -301,8 +260,7 @@ class Funda():
     #facdict={'Quality': ['ROETTM', 'ROATTM'],'Growth': ['QRevenuegrowth', 'QNetprofitgrowth'],'Value': ['PE', 'PB', 'PS']}
     #facdict={'Quality': ['ROETTM'],'Growth': ['QRevenuegrowth'],'Value': ['PE']}
     #facdict={'Quality': ['ROETTM', 'ROATTM'],'Growth': ['QRevenuegrowth', 'QNetprofitgrowth'],'Value': ['PE', 'PB', 'PS'],'Market':['turnoverweek']}
-    #facdict={'Sector':['SectorAlpha']}
-    #facdict={'Quality': ['ROETTM', 'ROATTM'],'Growth': ['QRevenuegrowth', 'QNetprofitgrowth'],'Value': ['PE', 'PB', 'PS'],'Market':['turnoverweek'],'Sector':['SectorAlpha']}
+   
 class Review():
     def __init__(self):
         self.P=Prep()
@@ -310,82 +268,13 @@ class Review():
     
     #The process of Backtest on Factor level (each factor consists of different signals)
     def FundaBT(self,dailyreturn,startdate,rebal_period,facdict):
-        rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
-        fzdict=self.F.Fzdict(dailyreturn,rebaldaylist,facdict)
+        fzdict=self.F.Fzdict(dailyreturn,startdate,rebal_period,facdict)
         itemlist=fzdict.keys()
         rebaldaylist=list(set([x.split('_')[1]for x in itemlist]))
         rebaldaylist.sort()                                                                         
         portdict=self.F.Portdict(fzdict,rebaldaylist)                                               ##calculate added zscore of factor and Group it into 5Q,Generate each Factor's holdings
         PNLcumdict=self.P.PNLC(dailyreturn,portdict)                                                #Calculate each factors' 5 PNL lines
         return(PNLcumdict,portdict)
-      
-      #The TEST module is used to take intersection of Universe like ThreeFouR (Analyst rating 3+, generated by TAfour in AnalystStock.py)  
-      #The process of Backtest on Factor level (each factor consists of different signals)
-    def FundaBTTEST(self,dailyreturn):
-        facdict={'Quality': ['ROETTM', 'ROATTM'],'Growth': ['QRevenuegrowth', 'QNetprofitgrowth'],'Value': ['PE', 'PB', 'PS'],'Market':['turnoverweek']}
-        #facdict={'Quality': ['ROETTM', 'ROATTM'],'Growth': ['QRevenuegrowth', 'QNetprofitgrowth'],'Value': ['PE', 'PB', 'PS'],'Market':['turnoverweek'],'Sector':['SectorAlpha']}
-        facinfacz=[x+'_zscore' for x in facdict.keys()]
-        ThreeFour=pd.read_csv("D:/SecR/ThreeFour.csv")
-        #ThreeFour=pd.read_csv("D:/SecR/Shen56.csv")
-        ThreeFour['ticker']=[str(x).zfill(6)for x in ThreeFour['ticker']]
-        ThreeFour=ThreeFour.drop_duplicates()
-        rebaldaylist=list(ThreeFour['date'].unique())
-        fzdict=self.F.FzdictTEST(dailyreturn,rebaldaylist,facdict,ThreeFour)                                                             
-        fztab=self.F.FZtab(fzdict)
-        fztab['meanscore']=np.nanmean(fztab[facinfacz],axis=1) #included those dont have score in a factor
-        olddict={}
-        for rebalday in rebaldaylist:
-            rebalz=fztab.loc[fztab['date']==rebalday,:].copy()
-            rebalz['rank']=rebalz['meanscore'].rank(method='first')
-            rebalz['Q']=pd.qcut(rebalz['rank'].values,5,labels=[1,2,3,4,5])
-            olddict['meanscore_'+rebalday]=rebalz
-        portdict=self.F.Portdict(olddict,rebaldaylist)                                               ##calculate added zscore of factor and Group it into 5Q,Generate each Factor's holdings
-        PNLcumdict=self.P.PNLC(dailyreturn,portdict)                                                #Calculate each factors' 5 PNL lines
-        return(PNLcumdict,portdict,fzdict)
-    
-    #Pairwise tesitng of Sector and Signals
-    def SectorSignal(self,dailyreturn):
-        startdate='2005-12-28'
-        rebal_period=20
-        signallist=pd.read_csv("D:/SecR/Signallist.csv")
-        sectorlist=DC.Sec_name('CSI')['sector']
-        rebaldaylist1=DC.Rebaldaylist(startdate,rebal_period)
-        NewSummarytab=pd.DataFrame(columns=['date',1,2,3,4,5,'signal','sector'])
-        for sector in sectorlist:
-            Summarytab=[]
-            print(sector)
-            universe=DC.Sector_stock(rebaldaylist1,[sector],'CSI')
-            for i in range(0,signallist.shape[0]):
-                facdict={}
-                facdict[signallist.iloc[i,0]]=[signallist.iloc[i,1]]
-                PNLcumdict,portdict=self.FundaBTTEST(dailyreturn,startdate,rebal_period,facdict,universe)
-                newtab=list(PNLcumdict[signallist.iloc[i,0]].iloc[-1,:])
-                newtab.append(signallist.iloc[i,1])
-                newtab.append(sector)
-                Summarytab.append(newtab)
-            DFSummarytab=pd.DataFrame(Summarytab,columns=['date',1,2,3,4,5,'signal','sector'])
-            NewSummarytab=NewSummarytab.append(DFSummarytab)
-            NewSummarytab.to_csv("D:/MISC/Summarytab.csv",index=False)
-        return(Summarytab) 
-    
-    #Backtest on integrated level, sum-up zscore of every factor, take Q1
-    def IntegratedBT(self,dailyreturn,rebaldaylist,facdict):
-        facinfacz=[x+'_zscore' for x in facdict.keys()]
-        fzdict=self.F.Fzdict(dailyreturn,rebaldaylist,facdict)
-        #ThreeFour=pd.read_csv("D:/SecR/ThreeFour.csv")
-        #fzdict=self.F.FzdictTEST(dailyreturn,rebaldaylist,facdict,ThreeFour)
-        fztab=self.F.FZtab(fzdict)
-        fztab['meanscore']=np.nanmean(fztab[facinfacz],axis=1) #included those dont have score in a factor
-        olddict={}
-        for rebalday in rebaldaylist:
-            rebalz=fztab.loc[fztab['date']==rebalday,:].copy()
-            rebalz['rank']=rebalz['meanscore'].rank(method='first')
-            rebalz['Q']=pd.qcut(rebalz['rank'].values,5,labels=[1,2,3,4,5])
-            olddict['meanscore_'+rebalday]=rebalz
-        portdict=self.F.Portdict(olddict,rebaldaylist)
-        PNLcumdict=self.P.PNLC(dailyreturn,portdict)             
-        return(PNLcumdict)
-        
         
     #portdict=self.FundaBT(dailyreturn,startdate,rebal_period,facdict) 
     #The 3-4-5 group of each factor 并集
@@ -468,8 +357,8 @@ class Review():
     #Reconstruct the fzdict(Factor RebalDay Zscore), othogonize them on
     def BT_Otho(self,fzdict,dailyreturn):
         itemlist=fzdict.keys()
-        facnamelist=list([x.split('_')[0]for x in itemlist])
-        rebaldaylist=list([x.split('_')[1]for x in itemlist])
+        facnamelist=list(set([x.split('_')[0]for x in itemlist]))
+        rebaldaylist=list(set([x.split('_')[1]for x in itemlist]))
         rebaldaylist.sort()
         newfzdict={}
         for rebalday in rebaldaylist:
@@ -487,10 +376,8 @@ class Review():
         portdict=self.F.Portdict(newfzdict,rebaldaylist)
         PNLcumdictNew=self.P.PNLC(dailyreturn,portdict)
         return(PNLcumdictNew,portdict,newfzdict)
-    
 
-
-#Use WLS constrianted to get pure factor return of each sector/style and market following BARRA CNE5 model              
+                
 class FactorReturn():
     def __init__(self):
         self.P=Prep()
@@ -512,7 +399,6 @@ class FactorReturn():
             fzdict=self.F.Factorscore(rebaldaylist,nsigdict,facname,siginfac,fzdict)                #calculate added zscore of factor and Group it into 5Q
         return(fzdict)
     
-    #Factor return of each day. Run Cross-sectional regression on daily basis 
     def Period_facreturn(self,fztab,rebalday,returnday,dailyreturn,stock_sector):
         fztabrebal=fztab.loc[fztab['date']==rebalday,:]
         fztabrebal=fztabrebal.dropna()
@@ -527,17 +413,11 @@ class FactorReturn():
         industry_weight=pd.DataFrame(othorebal.groupby(['primecode'])['mcap'].sum())          #industry_weight: the every sector's mcap as ratio vs the last industry
         industry_weight.reset_index(inplace=True)
         industry_weight['w']=-industry_weight['mcap']/industry_weight.iloc[industry_weight.shape[0]-1,industry_weight.shape[1]-1]
-        #othorebal['Size_zscore']=stats.zscore(othorebal['mcap'])
-        othorebal=othorebal.dropna()
-        facs=list(fztab.columns)
-        facs.remove('date')
-        facs.remove('ticker')
-        Xset=facs+['country']+sorted(set(othorebal['primecode'])) #Xset: all columns used to do the matrix operation for 因子收益calculation
+        Xset=list(set(fztab.columns).difference(['date','ticker']))+['country']+sorted(set(othorebal['primecode'])) #Xset: all columns used to do the matrix operation for 因子收益calculation
         X=othorebal[Xset].copy()                                                                   #Othorebal: has everything including ticker and date, mcap....
-        f=Opt.WLS_adjusted(othorebal,industry_weight,X)                    #W is a matrix of 15x2577                                                            
-        return(f,Xset)                                                       #W的定义：对 CNE5 模型求解的对象是每个因子的投资组合中所有股票的配比权重
-                                                                             #对于每一个因子，该因子上所有W之和为0
-    #loop through it EVERYDAY over the historical period 
+        f=Opt.WLS_adjusted(othorebal,industry_weight,X)                                                                                
+        return(f,Xset)
+    
     def Facreturn(self,startdate,dailyreturn):
         totalrebaldaylist=DC.Rebaldaylist(startdate,1)
         rebalperiodlist = [totalrebaldaylist[x:x+60] for x in range(0, len(totalrebaldaylist),60)]
@@ -563,19 +443,3 @@ class FactorReturn():
             facreturn.to_csv("D:/MISC/FactorReturn/facreturn_"+rebalday+".csv",index=False)
         return(facreturn)
     
-    def Rtest(self,startdate,dailyreturn):
-        rebaldaylist=DC.Rebaldaylist(startdate,20)
-        activestock=dailyreturn.loc[(dailyreturn['date'].isin(rebaldaylist))&(dailyreturn['dailyreturn']!=0),:].copy()
-        mcaprebal=pd.DataFrame()
-        for rebalday in rebaldaylist:
-            rebaldayactivestock=activestock.loc[activestock['date']==rebalday,:].copy()
-            Mcap_rebalday=rebaldayactivestock.loc[rebaldayactivestock['mcap']>np.percentile(rebaldayactivestock['mcap'],30),:].copy()
-            Mcap_rebalday['PortNav%']=1/Mcap_rebalday.shape[0]
-            mcaprebal=mcaprebal.append(Mcap_rebalday)
-        portPNL=RC.DailyPNL(dailyreturn,mcaprebal)
-        allshsreturn=np.exp(np.log1p(portPNL['dailyreturn']).cumsum())
-        return(allshsreturn)
-        
-    
-    
- 
