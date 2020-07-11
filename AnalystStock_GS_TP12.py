@@ -210,6 +210,7 @@ class Review():
     
     def TApostab(self,dailyreturn,startdate,rebal_period,lookback_period,benchmark):
         rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
+        rebaldaylist=[x for x in rebaldaylist if x<='2020-04-10']
         activepicksNiu2,postabNiu2,topanalystNiu2=self.N.Top_analyst_Niu2(dailyreturn,rebaldaylist,benchmark)
         print("Niu2Done")
         activepicksSec,postabSec,topanalystSec=self.TA.Top_analyst_Sector(dailyreturn,rebaldaylist,lookback_period,benchmark)
@@ -232,5 +233,7 @@ class Review():
         TAcount=TAcount.loc[TAcount['count']>=3,:]
         TAcount['date']=TAcount['index'].str[0:10]
         TAcount['ticker']=TAcount['index'].str[10:]
+        TAcount=TAcount[['date','ticker','count']]
         TAfourPNL=RC.EqReturn(dailyreturn,TAcount)
+        TAcount.to_csv("D:/SecR/NewThreeFour_20200709.csv",index=False)
         return(TAfourPNL)

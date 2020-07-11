@@ -626,3 +626,6 @@ tickerlist=list(set(list(chain(*tickers))))
 
 #remove a list from another list
  Xset=list(set(Xset).difference(['date','ticker']))
+ 
+#convert dates difference to integer
+df['enddate']-df['enddate'].shift(1))/np.timedelta64(1, 'D')

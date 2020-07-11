@@ -161,8 +161,9 @@ class SecR():
         #topsec=topsec.sort_values(by=['rank'])
         CSI=CSI.sort_values(by=['date','raccount'],ascending=[True,False])
         CSI['sectorname']=[x.encode('latin-1').decode('gbk') for x in CSI['sectorname']]
+        CITIC['sectorname']=[x.encode('latin-1').decode('gbk') for x in CITIC['sectorname']]
         CSI=CSI[['date','sector','sectorname','raccount','stockcounts','coverage']]
-        return(CSI)
+        return(CSI,CITIC)
     
     #Calculate all reports published of a sector vs stocks in the sector
     def Secstockcount(self,df,publisher):
@@ -236,7 +237,36 @@ class Review():
         rechist_mcap['diff']=rechist_mcap['nthoccur']-rechist_mcap['totaloccur']*0.3
         rechist_mcap=rechist_mcap.loc[rechist_mcap['diff']<=0,:]
         rechist_mcap=rechist_mcap[['date','ticker','raccount']]
+        rechist_mcap=rechist_mcap.drop_duplicates()
+        rechist_mcap=rechist_mcap.reset_index(drop=True)
         return(rechist_mcap)
+    
+    
+    #Pick the top30% of EVERY CSI sector, AFTER intersection with a BM.
+    def ActivepickBMSec(self,dailyreturn,bm,rebaldaylist):
+        rechist_active=self.SP.Rec_stat(dailyreturn,rebaldaylist,60,'N','CSI')
+        rechist_bm=WS.Benchmark_intersect(rechist_active,bm)       #No intersection with BM
+        #rechist_bm=rechist_active.copy()
+        mcaphist=dailyreturn.loc[(dailyreturn['date'].isin(rechist_bm['date'].unique()))&(dailyreturn['ticker'].isin(rechist_bm['ticker'].unique())),['date','ticker','mcap']]
+        rechist_mcap=DS.Data_merge(rechist_bm,mcaphist,'mcap')
+        tickerlist=rechist_mcap['ticker'].unique().tolist()
+        stock_sector=DC.Stock_sector(rebaldaylist,tickerlist,'CSI')
+        rechist_mcap,stock_sector=map(DS.Addindex,(rechist_mcap,stock_sector))
+        rechist_mcap=pd.merge(rechist_mcap,stock_sector[['index','primecode']],on='index',how='left')
+        rechist_mcap['index']=rechist_mcap['date']+rechist_mcap['primecode']
+        rechist_mcap=rechist_mcap.sort_values(by=['date','raccount','mcap'],ascending=[True,False,False])
+        rechist_mcap['nthoccur']=rechist_mcap.groupby('index').cumcount()+1
+        indexcounts=pd.DataFrame(rechist_mcap['index'].value_counts())
+        indexcounts.reset_index(inplace=True)
+        indexcounts.columns=['index','totaloccur']
+        rechist_mcap=pd.merge(rechist_mcap,indexcounts,on='index',how='left')
+        rechist_mcap['diff']=rechist_mcap['nthoccur']-rechist_mcap['totaloccur']*0.3
+        rechist_mcap=rechist_mcap.loc[rechist_mcap['diff']<=0,:]
+        rechist_mcap=rechist_mcap[['date','ticker','raccount']]
+        rechist_mcap=rechist_mcap.drop_duplicates()
+        rechist_mcap=rechist_mcap.reset_index(drop=True)
+        return(rechist_mcap)
+    
     
     #Produce absolute top topx stocks (with no %PortNav) on each rebalday, no intersection, marketcap or sector 
     def ActivepickNS_production(self,startdate,rebal_period,dailyreturn,topx):

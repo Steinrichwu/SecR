@@ -95,7 +95,7 @@ class DataCollect():
     #Download RSI from Database
     def RSI_Db(self,rebalday):
         ms = MSSQL(host="10.27.10.10:1433",user="hyzb",pwd="hyzb2018",db="hyzb")
-        sql="select CODE, rsi_24d from BASIC_PRICE_HIS H where  TIME='"+rebalday+"'"
+        sql="select CODE, 1/rsi_24d from BASIC_PRICE_HIS H where  TIME='"+rebalday+"'"
         reslist=ms.ExecNonQuery(sql)
         df=pd.DataFrame(reslist.fetchall())
         df.columns=['ticker','RSIB']
@@ -315,7 +315,7 @@ class DataCollect():
     def FacRollingReturn(self,rolldays):
         Facreturn=pd.read_csv("D:/SecR/FacReturn_CITIC_SIZE.csv")
         FacLogreturn=Facreturn.drop('date',1)
-        Facdailyreturn=FacLogreturn.copy()
+        #Facdailyreturn=FacLogreturn.copy()
         if rolldays=='ITD':
             FacLogreturn=np.exp(np.log1p(FacLogreturn).cumsum())
         else:
@@ -334,10 +334,11 @@ class DataCollect():
         sectorreturn=pd.melt(faclogreturn,id_vars=['date'],value_vars=primecodelist,var_name='primecode',value_name='secrollreturn')
         sectorreturn['index']=sectorreturn['date']+sectorreturn['primecode']
         stock_sector=self.Ashs_stock_seccode(rebaldaylist,primecodelist,'CITIC')
+        stock_sector.loc[stock_sector['date']>=sectorreturn['date'].max(),'date']=sectorreturn['date'].max() 
         stock_sector['index']=stock_sector['date']+stock_sector['primecode']
         stock_sector=pd.merge(stock_sector,sectorreturn[['index','secrollreturn']],on='index',how='left')
         stock_sector=stock_sector.dropna()
-        stock_sector=stock_sector.drop('index',1)
+        stock_sector=stock_sector.drop(['index'],1)
         return(stock_sector)
     
     #LongandShortterm(use 180+10days cumulative return as signal)
@@ -347,10 +348,8 @@ class DataCollect():
         sigtab['index']=sigtab['date']+sigtab['ticker']
         sigtab2['index']=sigtab['date']+sigtab['ticker']
         sigtab=pd.merge(sigtab,sigtab2[['index','secrollreturn']],on='index',how='left')
-        sigtab['LTrank']=sigtab['secrollreturn_x'].rank(ascending=True)
-        sigtab['STrank']=sigtab['secrollreturn_y'].rank(ascending=True)
-        sigtab['momrank']=sigtab['LTrank']+sigtab['STrank']
-        sigtab=sigtab[['date','ticker','primecode','momrank']]
+        sigtab['combreturn']=sigtab['secrollreturn_x']+sigtab['secrollreturn_y']
+        sigtab=sigtab[['date','ticker','primecode','combreturn']]
         return(sigtab)
     
 

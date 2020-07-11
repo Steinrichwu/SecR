@@ -213,15 +213,14 @@ class Review():
     #rebal_period=10
     #lookback_period=30
     #benchmark='CSI300'
-    def TApostab(self,dailyreturn,startdate,rebal_period,lookback_period,benchmark):
-        rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
+    def TApostab(self,dailyreturn,rebaldaylist,lookback_period,benchmark):
         activepicksNiu2,postabNiu2,topanalystNiu2=self.N.Top_analyst_Niu2(dailyreturn,rebaldaylist,benchmark)
         print("Niu2Done")
         activepicksSec,postabSec,topanalystSec=self.TA.Top_analyst_Sector(dailyreturn,rebaldaylist,lookback_period,benchmark)
         print("SecDone")
         activepicksNS,postabNS,topanalystNS=self.TA.Top_analyst_nonSector(dailyreturn,rebaldaylist,lookback_period,benchmark)
         print("NonSecDone")
-        activepicksHS=HR.ActivepickNS_production(startdate,rebal_period,dailyreturn,200)
+        activepicksHS=HR.ActivepickBMSec_production(dailyreturn,'N',rebaldaylist)
         return(activepicksNiu2,activepicksSec,activepicksNS,activepicksHS)
         
     def TAEqreturn(self,dailyreturn,startdate,rebal_period,lookback_period,benchmark):
