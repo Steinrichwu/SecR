@@ -35,6 +35,22 @@ class Optimize():
         bnds=tuple((0.001,0.05) for x in range(stock_num))    
         res=minimize(fac_exposure_objective,[0]*stock_num,constraints=cons,bounds=bnds,method='SLSQP')
         return(res['x']) 
+    
+    #matcov=log_returns.cov()*252
+    #returntab=rechist.pivot_table(index='date',columns='ticker',values='dailyreturn',aggfunc='first')
+    def Opt2(self,returntab):   
+        port=pd.DataFrame(returntab.columns,columns=['ticker'])
+        port['weight']=1/port.shape[0]
+        stock_num=port.shape[0]
+        def VOL(weights):
+            weights=np.array(weights)
+            port_vol=np.sqrt(np.dot(weights.T,np.dot(returntab.cov()*252,weights)))-0.25
+            return (port_vol)
+        cons=({'type':'eq','fun': lambda x: np.sum(x)-1})
+               #{'type':'eq','fun': lambda x: x-0})
+        bnds=tuple((0.001,0.3) for x in range(stock_num))    
+        res=minimize(VOL,[1/stock_num]*stock_num,constraints=cons,bounds=bnds,method='SLSQP')
+        return(res['x'])
 
     def WLS_adjusted(self,othorebal,industry_weight,X):
         adj_weighted=np.sqrt(othorebal['mcap'])/np.sqrt(othorebal['mcap']).sum()                        #构建权重调整矩阵V

@@ -1,4 +1,4 @@
-,# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Created on Sat Jul 28 11:47:12 2018
 
@@ -400,7 +400,7 @@ mydict=dict(zip(alphadf2['Bucket'],alphadf2['JYDBMain']))
 #fill 0 with precedent number
 RSI=RSI.replace(to_replace=0,method='ffill')
 
-#remove column by name
+#drol column by name
 df = df.drop('column_name', 1)
 
 #return the difference of two rows
@@ -522,6 +522,7 @@ df['ticker']=df['ticker'].apply(lambda x: x+'.SH' if x[0]=='6' else x+'.SZ')
 
 #Count the occurence of items in a dataframe column:
 stats=df['ticker'].value_counts()
+df2['date_count']=df2.groupby('date')['date'].transform('count')
 
 #select row, with conditions applied
 df=df[df['ticker'].apply(lambda x: len(x)==6)]
@@ -620,9 +621,57 @@ result = pd.concat(frames)
 #Remove a list from another list
 CSIcol=[x for x in CSI.columns if x not in['date','ticker','weight','mcap']]
 
+#Conditionals in a list
+daylist=[x for x in rebaldaylist if x>srt['date'].min()]
 #flatten a list
 from itertools import chain
 tickerlist=list(set(list(chain(*tickers))))
 
 #remove a list from another list
  Xset=list(set(Xset).difference(['date','ticker']))
+ 
+#convert dates difference to integer
+df['enddate']-df['enddate'].shift(1))/np.timedelta64(1, 'D')
+    
+#nlargest by group
+allsecpos.groupby('date').apply(lambda x: x.nlargest(60,'PortNav%')).reset_index(drop=True)
+
+#GROUPBY Functions:
+df['bar']=df.groupby('date')['mcap'].transform(lambda x: x.quantile(0.3))
+bar=df.groupby('date')['mcap'].quantile(0.3)
+port['PortNav%']=port.groupby('index')['PortNav%'].transform('sum')
+rebal_sighist=rebal_sighist.drop_duplicates('index','last')
+df["rank"] = df.groupby("group_ID")["value"].rank("dense", ascending=False)
+allsecposTop60=allsecpos.groupby('date').apply(lambda x: x.nlargest(60,'PortNav%')).reset_index(drop=True)
+sighist['nthoccur']=sighist.groupby('index').cumcount()+1
+
+#Move column to the first of dataframe
+newdf.columns=newdict[list(newdict.keys())[0]].columns
+datecol=newdf.pop('date')
+newdf.insert(0,column='date',value=datecol)
+
+#Chinese Characters
+df['covered_industry']=[x.encode('latin-1').decode('gbk') for x in df['covered_industry']]
+
+#merge a few dataframes all at once
+data_frame=[df,ROE,OpRevGrowth,OpRevGrowth3Y]
+dfmerged=reduce(lambda left,right: pd.merge(left,right, on=['ticker'],how='left'),data_frame)
+
+#loc using partial string 
+df.loc[(df['CSIprimecode']=='06')&(~df['CITICprimecode'].str[0:2].isin(['40','41','42'])),'CITICprimecode']='4130'
+
+#rolling standard deviation/ rolling mean/Moving Average
+rolling_std = data['Close'].rolling(window).std()
+rolling_std = data['Close'].rolling(window).mean()
+
+#Put lists into a dataframe
+ROEmedian=pd.DataFrame({'date':rebaldaylist,'ROEmeidan':ROEmedianlist})
+
+#If any in the column is na
+singlefundhist['dailyreturn'].isnull().any()==False
+
+#Apply functions to columns
+i.iloc[:,1:].apply(lambda x: np.exp(np.log1p(x).cumsum()),axis=0)
+
+#Apply functions to two columns:
+weight['firstfreq']=weight.apply(lambda x: x['freqdiff'][0:x['loc']],axis=1)
