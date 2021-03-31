@@ -9,6 +9,10 @@ Created on Thu Apr 16 20:55:10 2020
 #LC_MainDataNew 是YTD数据，按公司财报结构分类的数字，Ratio
 #LC_MainIndexNew 是YTD数据,按公司能力分类的Ratio
 #QFI是季度数据/ QFI Mark=2: 合并未调整
+#只有IncomeStatement有单季度表LC_QIncomeStatementNew 其他总表：LC_BalanceSheetAll、LC_IncomeStatementAll（YTD）
+#ROE计算TTM比较好，Q-ROE波动很大
+#要看合并报表 以及 归母净利润 Ifmerged=1 合并报表（非母公司）； IfAdjusted=2 未调整； 
+ 
 
 class Query():
     def __init__(self):
@@ -19,6 +23,14 @@ class Query():
         sql="With Temp As (Select V.TradingDay, V."+signame+", V.InnerCode from JYDBBAK.dbo.LC_DIndicesForValuation V where V.TradingDay='"+rebalday+"') Select temp.TradingDay,temp.TradingDay,SM.SecuCode,1/temp."+signame+" from Temp left join JYDBBAK.dbo.SecuMain SM on Temp.InnerCode=SM.InnerCode where SM.SecuCategory = 1"
         return(sql)
         
+    def Valuation_hist(self,signame,ticker,startdate):
+        sql="Select TradingDay, SM.SecuCode, V."+signame+" from JYDBBAK.dbo.LC_DIndicesForValuation V left join JYDBBAK.dbo.SecuMain SM on V.InnerCode=SM.InnerCode where SM.SecuCategory = 1 and SM.SecuCode='"+ticker+"' and TradingDay>='"+startdate+"'"
+        return(sql)
+    
+    def Valuation_hist_daily(self,signame,tickerlist,startdate):
+        sql="Select TradingDay, SM.SecuCode, V."+signame+" from JYDBBAK.dbo.LC_DIndicesForValuation V left join JYDBBAK.dbo.SecuMain SM on V.InnerCode=SM.InnerCode where SM.SecuCategory = 1 and SM.SecuCode in ("+str(tickerlist)[1:-1]+") and TradingDay>'"+startdate+"'"
+        return(sql)
+    
     def ROECutYTD(self,startdate):
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.ROECut from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
         return(sql)
@@ -60,11 +72,6 @@ class Query():
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.NetProfitCashCover from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"           
         return(sql)
         
-            
-    #总资产周转率（TotalAssetTRate）＝营业总收入*2/（期初资产合计+期末资产合计）
-    def TotalAssetTRate(self,startdate):
-        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, QFI.TotalAssetTRate from JYDBBAK.dbo.LC_QFinancialIndexNew QFI left join JYDBBAK.dbo.SecuMain SM  on QFI.CompanyCode=SM.CompanyCode where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
-        return(sql)
     
     #LC_IncomeStatementAll: Ifmerged=1 合并报表，非母公司； IfAdjusted=2 未调整；  IncomeStatementALL也是YTD
     def RanDYTD(self,startdate):
@@ -91,22 +98,112 @@ class Query():
         sql="Select ICS.InfoPublDate, ICS.EndDate, SM.SecuCode, ICS.NPFromParentCompanyOwners from JYDBBAK.dbo.LC_QIncomeStatementNew ICS left join JYDBBAK.dbo.SecuMain SM on ICS.CompanyCode=SM.CompanyCode where SM.SecuCategory=1 AND ICS.Mark=2 and ICS.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
         return(sql)
 
+    def OperatingRevenuePS(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.OperatingRevenuePSTTM from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def WorkingCapital(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.WorkingCapital from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+   
+     #总资产周转率（TotalAssetTRate）＝营业总收入*2/（期初资产合计+期末资产合计）
+    def TotalAssetTRate(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, QFI.TotalAssetTRate from JYDBBAK.dbo.LC_QFinancialIndexNew QFI left join JYDBBAK.dbo.SecuMain SM  on QFI.CompanyCode=SM.CompanyCode where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+
+    def NetAssetPS(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.NetAssetPS from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def CurrentTRate(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, QFI.CurrentTRate from JYDBBAK.dbo.LC_QFinancialIndexNew QFI left join JYDBBAK.dbo.SecuMain SM  on QFI.CompanyCode=SM.CompanyCode where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def CashRateOfSales(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.CashRateOfSales from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def OperCashInToAsset(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.OperCashInToAsset from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def NetProfitCashCover(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.NetProfitCashCover from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def OperatingRevenueCashCover(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.OperatingRevenueCashCover from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+         #存货周期率（次） Inventory Turnover=Cost of Sales/Avernage Inventory
+    def InventoryTRate(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.InventoryTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+         #固定资产周转率(次) ＝营业总收入*2/（期初固定资产合计+期末固定资产合计
+    def FixedAssetTRate(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.FixedAssetTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    
+        #流动资产周转率(次) =营业总收入*2/（期初流动资产合计+期末流动资产合计）
+    def CurrentAssetsTRate(self,startdate): 
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.CurrentAssetsTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+        
+    
+############################DuPont Project####################################
+    def FinancialLiability(self,startdate):  
+        sql="Select FSD.InfoPublDate, FSD.EndDate,SM.Secucode, FSD.InterestBearDebt from JYDBBAK.dbo.LC_FSDerivedData FSD left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=FSD.CompanyCode where SM.SecuCategory = 1 and FSD.IfAdjusted=2 and FSD.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def FinancialAsset(self,startdate):
+        sql="Select BS.InfoPublDate, BS.EndDate,SM.Secucode, BS.TradingAssets, BS.HoldForSaleAssets, BS.HoldToMaturityInvestments, BS.OthEquityInstrument, BS.OthNonCurFinAssets, BS.DebtInvestment, BS.OthDebtInvestment from JYDBBAK.dbo.LC_BalanceSheetAll BS left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=BS.CompanyCode where SM.SecuCategory = 1 and BS.IfAdjusted=2 and BS.IfMerged=1 and BS.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def TotalAsset(self,startdate):
+        sql="Select BS.InfoPublDate, BS.EndDate,SM.Secucode, BS.TotalAssets from JYDBBAK.dbo.LC_BalanceSheetAll BS left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=BS.CompanyCode where SM.SecuCategory = 1 and BS.IfAdjusted=2 and BS.IfMerged=1 and BS.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def TotalLiability(self,startdate):
+        sql="Select BS.InfoPublDate, BS.EndDate,SM.Secucode, BS.TotalLiability from JYDBBAK.dbo.LC_BalanceSheetAll BS left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=BS.CompanyCode where SM.SecuCategory = 1 and BS.IfAdjusted=2 and BS.IfMerged=1 and BS.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def PNLTTM(self,startdate):
+        sql="Select FSD.InfoPublDate, FSD.EndDate,SM.Secucode, FSD.OperatingRevenueTTM, FSD.OperatingProfitTTM,FSD.FinancialExpenseTTM from JYDBBAK.dbo.LC_FSDerivedData FSD left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=FSD.CompanyCode where SM.SecuCategory = 1 and FSD.IfAdjusted=2 and FSD.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+    
+    def TotalEquity(self,startdate):
+        sql="Select BS.InfoPublDate, BS.EndDate,SM.Secucode, BS.TotalAssets from JYDBBAK.dbo.LC_BalanceSheetAll BS left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=BS.CompanyCode where SM.SecuCategory = 1 and BS.IfAdjusted=2 and BS.IfMerged=1 and BS.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+
+    def OpRevGrowthYOY(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.OperatingRevenueGrowRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
+
+    def OpRevGrowth3Y(self,startdate):
+        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.ORComGrowRate3Y from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCategory = 1 and QFI.Mark=2 AND QFI.InfoPublDate>=DATEADD(year,-3,'"+startdate+"')"
+        return(sql)
     
 
 
 
 
 
+ #一般来说，有息负债就是金融负债 InterestBearDebt
 
 
 
 
-#Profitability-II (Return on Sales)
+
+
+
+###################################################OTHERS###########################    
+    #Profitability-II (Return on Sales)
     def OperatingProfitMargin(self,tickerlist):
         sql="SELECT QFI.InfoPublDate, QFI.EndDate, SM.SecuCode, QFI.OperatingProfitMargin FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.CompanyCode=SM.CompanyCode) WHERE SM.SecuCode  in ("+str(tickerlist)[1:-1]+") AND (SM.SecuCategory=1) AND (QFI.Mark=2) AND (QFI.InfoPublDate>='2009-01-01')"
         return(sql)
         
-    
     
     def NetProfitMargin(self, tickerlist): #QFI+SM
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, QFI.NetProfitRatio from  JYDBBAK.dbo.SecuMain SM  left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on QFI.CompanyCode=SM.CompanyCode where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"
@@ -154,16 +251,7 @@ class Query():
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.NOCFToOperatingNI from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"
         return(sql)
         
-        #% of operating cash vs Net Profit
-    def NetProfitCashCover(self,tickerlist):
-        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.NetProfitCashCover from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"
-        return (sql)
-        
-        #% of operating cash vs Operating Revenue
-    def OperatingRevenueCashCover(self,tickerlist):
-        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.OperatingRevenueCashCover from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"
-        return (sql)
-    
+
 #CashFlow Ratios -II (Coverage)
     def OperatingCFToLiability(self,tickerlist):
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.NOCFToTLiability from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"
@@ -222,10 +310,7 @@ class Query():
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.TotalAssetTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"
         return(sql)
         
-        #存货周期率（次） Inventory Turnover=Cost of Sales/Avernage Inventory
-    def InventoryTRate(self,tickerlist):
-        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.InventoryTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'" 
-        return(sql)
+   
         
         #存货周期（天） Days of Inventory on hand=Number of days in period/Inventory turnover
     def InventoryTDays(self,tickerlist):
@@ -252,15 +337,8 @@ class Query():
         sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.AccountsPayablesTDays from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"           
         return(sql)
         
-        #流动资产周转率(次) =营业总收入*2/（期初流动资产合计+期末流动资产合计）
-    def CurrentAssetsTRate(self,tickerlist):
-        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.CurrentAssetsTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"           
-        return(sql)
-        
-        #固定资产周转率(次) ＝营业总收入*2/（期初固定资产合计+期末固定资产合计
-    def FixedAssetTRate(self,tickerlist):
-        sql="Select QFI.InfoPublDate, QFI.EndDate,SM.Secucode, MI.FixedAssetTRate from JYDBBAK.dbo.LC_MainIndexNew MI left join JYDBBAK.dbo.SecuMain SM on SM.CompanyCode=MI.CompanyCode left join JYDBBAK.dbo.LC_QFinancialIndexNew QFI on (QFI.EndDate=MI.EndDate and QFI.CompanyCode=MI.CompanyCode) where SM.SecuCode in ("+str(tickerlist)[1:-1]+") and QFI.Mark=2 AND QFI.InfoPublDate>='2009-01-01'"           
-        return(sql)
+    
+   
         
         #股东权益周转率(次) ＝营业总收入*2/（期初净资产+期末净资产）
     def EquityTRate(self,tickerlist):

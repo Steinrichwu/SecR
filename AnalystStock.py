@@ -77,7 +77,7 @@ class Prep():
         df_holding_active=WS.Active_stock_screening(df_holding,dailyreturn,rebaldaylist)
         df_holidng_bm=WS.Benchmark_intersect(df_holding_active,benchmark)
         postab=WS.Generate_PortNav(df_holidng_bm)
-        return(df_holding_active,postab)
+        return(df_holding,postab)
 
 #Get the analyst_rolling P&L on rebaldays, rebaldays in one go
     def General_prep(self,lookback_period,rebaldaylist):
@@ -177,7 +177,8 @@ class Niu2():
             top5_analyst_rebalday=pd.DataFrame(columns=['date','analyst_id'])
             for industry in industry_list:
                 sec_analystlist=analyst_covered_sector.loc[(analyst_covered_sector['covered_industry'].str.contains(industry))&(~analyst_covered_sector['covered_industry'].str.contains(','+industry))]['analyst_id'].unique().tolist()
-                sector_analyst_rank=analyst_rank.loc[analyst_rank['date']==rebalday,sec_analystlist]
+                sec_analystlist_intersect=list(set(sec_analystlist)&set(list(analyst_rank.columns)))
+                sector_analyst_rank=analyst_rank.loc[analyst_rank['date']==rebalday,sec_analystlist_intersect]
                 sector_analyst_top=sector_analyst_rank.apply(lambda s: s.nlargest(5).index,axis=1).tolist()[0].tolist()
                 top5_analyst_rebalday_indu=pd.DataFrame(sector_analyst_top,columns=['analyst_id'])
                 top5_analyst_rebalday_indu['date']=rebalday
@@ -212,34 +213,23 @@ class Review():
     #startdate='2015-12-28'
     #rebal_period=10
     #lookback_period=30
-    #benchmark='CSI300'
-    def TApostab(self,dailyreturn,startdate,rebal_period,lookback_period,benchmark):
-        rebaldaylist=DC.Rebaldaylist(startdate,rebal_period)
+    #benchmark='CSIAll'
+    def TApostab(self,dailyreturn,rebaldaylist,lookback_period,benchmark):
         activepicksNiu2,postabNiu2,topanalystNiu2=self.N.Top_analyst_Niu2(dailyreturn,rebaldaylist,benchmark)
         print("Niu2Done")
         activepicksSec,postabSec,topanalystSec=self.TA.Top_analyst_Sector(dailyreturn,rebaldaylist,lookback_period,benchmark)
         print("SecDone")
         activepicksNS,postabNS,topanalystNS=self.TA.Top_analyst_nonSector(dailyreturn,rebaldaylist,lookback_period,benchmark)
         print("NonSecDone")
-        activepicksHS=HR.ActivepickNS_production(startdate,rebal_period,dailyreturn,200)
+        activepicksHS=HR.ActivepickBMSec_production(dailyreturn,'N',rebaldaylist)
         return(activepicksNiu2,activepicksSec,activepicksNS,activepicksHS)
         
     def TAEqreturn(self,dailyreturn,startdate,rebal_period,lookback_period,benchmark):
         activepicksNiu2,activepicksSec,activepicksNS,activepicksHS=self.TApostab(dailyreturn,startdate,rebal_period,lookback_period,benchmark)
         Niu2EqReturn,SecEqReturn,NSEqReturn,HsEqReturn=map(RC.EqReturn,[(dailyreturn,activepicksNiu2),(dailyreturn,activepicksSec),(dailyreturn,activepicksNS),(dailyreturn,activepicksHS)])
         return(Niu2EqReturn,SecEqReturn,NSEqReturn,HsEqReturn)
-        
-    def TAfour(self,dailyreturn,startdate,rebal_period,lookback_period,benchmark):
-        N2,Sec,NS,HS=self.TApostab(dailyreturn,startdate,rebal_period,lookback_period,benchmark)
-        N2,Sec,NS,HS=map(DS.Addindex,(N2,Sec,NS,HS))
-        N2,Sec,NS,HS=map(lambda df: df[['date','ticker','index']],[N2,Sec,NS,HS])
-        frames=[N2,Sec,NS,HS]
-        postab=pd.concat(frames)
-        TAcount=pd.DataFrame(postab.groupby('index')['index'].count())
-        TAcount=TAcount.rename(columns={'index':'count'})
-        TAcount.reset_index(inplace=True)
-        TAcount=TAcount.loc[TAcount['count']>=3,:]
-        TAcount['date']=TAcount['index'].str[0:10]
-        TAcount['ticker']=TAcount['index'].str[10:]
+    
+    #benchmark='CSIAll'
+    def TAfour(self,dailyreturn,rebaldaylist,lookback_period,benchmark):
         TAfourPNL=RC.EqReturn(dailyreturn,TAcount)
         return(TAfourPNL)

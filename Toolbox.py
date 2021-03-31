@@ -28,15 +28,28 @@ tradingday=pd.read_csv("D:/SecR/Tradingday.csv")
 class DataCollect():
     def __init__(self):
         pass
-#Return all stocks' sector information on rebaldays
-    def SectorPrep(self,rebaldaylist,publisher):
+
+
+#Return all stocks' FIRST/SECOND sector information on rebaldays #Set first_second as second, will download the 中信二级行业
+    def SectorPrep(self,rebaldaylist,publisher,first_second):
         ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
-        if publisher=='CITIC':
+        if (publisher=='CITIC')&(first_second=='first'):
             query="SELECT convert(varchar,LEI.CancelDate,23),SecuCode,FirstIndustryCode FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_ExgIndustry LEI on SM.CompanyCode=LEI.CompanyCode where LEI.Standard=37 and SM.SecuCategory=1"
-        if publisher=='CSI':
+        if (publisher=='CSI')&(first_second=='first'):
             query="SELECT convert(varchar,LEI.CancelDate,23),SecuCode,FirstIndustryCode FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_ExgIndustry LEI on SM.CompanyCode=LEI.CompanyCode where LEI.Standard=28 and SM.SecuCategory=1"
+        if (publisher=='CITIC')&(first_second=='second'):
+            query="SELECT convert(varchar,LEI.CancelDate,23),SecuCode,SecondIndustryCode FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_ExgIndustry LEI on SM.CompanyCode=LEI.CompanyCode where LEI.Standard=37 and SM.SecuCategory=1"
         reslist=ms.ExecQuery(query)
         tickersectors=pd.DataFrame(reslist,columns=['date','ticker','primecode'])
+        if (publisher=='CITIC')&(first_second=='first'):
+            query="SELECT convert(varchar,LEI.CancelDate,23),SecuCode,FirstIndustryCode FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_STIBExgIndustry LEI on SM.CompanyCode=LEI.CompanyCode where LEI.Standard=37 and SM.SecuCategory=1"
+        if (publisher=='CSI')&(first_second=='first'):
+            query="SELECT convert(varchar,LEI.CancelDate,23),SecuCode,FirstIndustryCode FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_STIBExgIndustry LEI on SM.CompanyCode=LEI.CompanyCode where LEI.Standard=28 and SM.SecuCategory=1"
+        if (publisher=='CITIC')&(first_second=='second'):
+            query="SELECT convert(varchar,LEI.CancelDate,23),SecuCode,SecondIndustryCode FROM JYDBBAK.dbo.SecuMain SM LEFT JOIN JYDBBAK.dbo.LC_STIBExgIndustry LEI on SM.CompanyCode=LEI.CompanyCode where LEI.Standard=37 and SM.SecuCategory=1"
+        reslist=ms.ExecQuery(query)
+        tickersectors2=pd.DataFrame(reslist,columns=['date','ticker','primecode'])
+        tickersectors=tickersectors.append(tickersectors2)
         tempdict={}
         newtickerlist=tickersectors['ticker'].unique().tolist()
         tempdict={rebalday:newtickerlist for rebalday in rebaldaylist}
@@ -48,16 +61,35 @@ class DataCollect():
         sector=sector.reset_index(drop=True)
         sector['primecode']=sector['primecode'].fillna(method='bfill')
         return(sector)
+    
+    #Extract sector index innercode, sector secucode and sector name from database for future use
+    def Sector_Index(self):
+        ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
+        sql="select distinct SM.InnerCode,SM.SecuCode,SM.ChiNameAbbr from  JYDBBAK.dbo.QT_IndexQuote IQ left join  JYDBBAK.dbo.SecuMain SM on IQ.InnerCode=SM.InnerCode where TradingDay>'2008-12-31' and secucode in ('000951','000932','000935','000936','000931','000933','000929','000930','000928','000849','000952','000937','000300') order by SecuCode ASC"
+        reslist=ms.ExecQuery(sql)
+        sectorinfo=pd.DataFrame(reslist,columns=['innercode','secucode','name'])
+        sectorinfo['name']=[x.encode('latin-1').decode('gbk') for x in sectorinfo['name']]
+        return(sectorinfo)
+    
+    def Sector_Mixed_Index_memb(self,sectorcode,membstartdate):
+        ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
+        sector_indexinfo=pd.read_csv("D:/SecR/CSI_Index.csv")
+        innercode=list(sector_indexinfo.loc[sector_indexinfo['sector']==sectorcode,'InnerCode'])[0]
+        sql="select EndDate,SM.SecuCode,weight from JYDBBAK.dbo.LC_IndexComponentsWeight IC left join JYDBBAK.dbo.SecuMain SM on IC.InnerCode=SM.InnerCode where IndexCode='"+str(innercode)+"' and ENDDate>'"+membstartdate+"'"
+        reslist=ms.ExecQuery(sql)
+        tickersectors2=pd.DataFrame(reslist,columns=['date','ticker','weight'])
+        return(tickersectors2)
+        
 #Enter rebaldaylist,primecodelist, Return stocks of the primecodes on that day
     def Sector_stock(self,rebaldaylist,primecodelist,publisher):
-        sector_stock=self.SectorPrep(rebaldaylist,publisher)
+        sector_stock=self.SectorPrep(rebaldaylist,publisher,'first')
         sector_stock=sector_stock.loc[(sector_stock['date'].isin(rebaldaylist))&(sector_stock['primecode'].isin(primecodelist)),['date','ticker']]
         sector_stock=sector_stock.sort_values(by=['date'],ascending=[True])
         return(sector_stock)
 
 #Enter rebaldaylist,primecodelist,Return stocks, their primecode on that day, Keeps Ashs only
     def Ashs_stock_seccode(self,rebaldaylist,primecodelist,publisher):
-        sector_stock=self.SectorPrep(rebaldaylist,publisher)
+        sector_stock=self.SectorPrep(rebaldaylist,publisher,'first')
         sector_stock=sector_stock.loc[(sector_stock['date'].isin(rebaldaylist))&(sector_stock['primecode'].isin(primecodelist)),['date','ticker','primecode']]
         sector_stock=sector_stock.sort_values(by=['date'],ascending=[True])
         sector_stock=sector_stock.loc[sector_stock['ticker'].str[0].isin(['6','0','3'])]  
@@ -65,10 +97,50 @@ class DataCollect():
 
 #Given reablday, return the primecode of all stocks on the list
     def Stock_sector(self,rebaldaylist,tickerlist,publisher):
-        stock_sector=self.SectorPrep(rebaldaylist,publisher)
+        stock_sector=self.SectorPrep(rebaldaylist,publisher,'first')
         stock_sector=stock_sector.loc[stock_sector['date'].isin(rebaldaylist),:]
         stock_sector=stock_sector.loc[stock_sector['ticker'].isin(tickerlist),:]
+        stock_sector=stock_sector.drop_duplicates()  
         return(stock_sector)
+    
+    def Stock_sectorCSI_CITIC(self,rebaldaylist,tickerlist):
+        df=self.Stock_sector(rebaldaylist,tickerlist,'CSI')
+        df=df.rename(columns={'primecode':'CSIprimecode'})
+        df=self.Sector_get(df,'CITIC')
+        df=df.rename(columns={'primecode':'CITICprimecode'})
+        df=self.Second_sector_get(df)
+        df.loc[(df['CSIprimecode']=='06')&(~df['CITICprimecode'].str[0:2].isin(['40','41','42'])),'CITICprimecode']='41'
+        df.loc[df['CSIprimecode']=='06','CSIprimecode']=df.loc[df['CSIprimecode']=='06','CITICprimecode']
+        df=df.rename(columns={'CSIprimecode':'primecode'})
+        df=df.drop(['CITICprimecode','secondcode'],axis=1)
+        return(df)
+    
+    #Add a column of primesector to an existing df with date and ticker  
+    def Sector_get(self,df,publisher):
+        daylist=list(df['date'].unique())
+        tickerlist=list(df['ticker'].unique())
+        stock_sector=self.Stock_sector(daylist,tickerlist,publisher)
+        df['index']=df['date']+df['ticker']
+        stock_sector['index']=stock_sector['date']+stock_sector['ticker']
+        df=pd.merge(df,stock_sector[['index','primecode']],on='index',how='left')
+        df=df.drop('index',axis=1)
+        return(df)
+    
+    #中信二级行业 Add a column of secondsector to an existing df with datae and ticker
+    def Second_sector_get(self,df):
+        daylist=list(df['date'].unique())
+        tickerlist=list(df['ticker'].unique())
+        stock_sector=self.SectorPrep(daylist,'CITIC','second')
+        stock_sector=stock_sector.loc[stock_sector['date'].isin(daylist),:]
+        stock_sector=stock_sector.loc[stock_sector['ticker'].isin(tickerlist),:]
+        stock_sector=stock_sector.drop_duplicates()
+        stock_sector=stock_sector.rename(columns={'primecode':'secondcode'})
+        stock_sector['index']=stock_sector['date']+stock_sector['ticker']
+        df['index']=df['date']+df['ticker']
+        df=pd.merge(df,stock_sector[['index','secondcode']],on='index',how='left')
+        df=df.drop('index',axis=1)
+        return(df)
+        
 
 #Return the list of seccode and secname of CITIC or CSI first level 
     def Sec_name(self,publisher):
@@ -79,6 +151,8 @@ class DataCollect():
             sql="SELECT distinct LEI.FirstIndustryCode,FirstIndustryName from JYDBBAK.dbo.LC_ExgIndustry LEI where LEI.standard=28"
         reslist=ms.ExecQuery(sql)
         sec_name=pd.DataFrame(reslist,columns=['sector','sectorname'])
+        sec_name=sec_name.drop_duplicates(subset=['sector'],keep='first')
+        sec_name['sectorname']=[x.encode('latin-1').decode('gbk') for x in sec_name['sectorname']]
         return(sec_name)
         
  #Generate a list of rebal days, to be used 
@@ -95,7 +169,7 @@ class DataCollect():
     #Download RSI from Database
     def RSI_Db(self,rebalday):
         ms = MSSQL(host="10.27.10.10:1433",user="hyzb",pwd="hyzb2018",db="hyzb")
-        sql="select CODE, rsi_24d from BASIC_PRICE_HIS H where  TIME='"+rebalday+"'"
+        sql="select CODE, 1/rsi_24d from BASIC_PRICE_HIS H where  TIME='"+rebalday+"'"
         reslist=ms.ExecNonQuery(sql)
         df=pd.DataFrame(reslist.fetchall())
         df.columns=['ticker','RSIB']
@@ -169,7 +243,17 @@ class DataCollect():
         mcaphist=pd.DataFrame(reslist,columns=['date','ticker','mcap'])
         mcaphist['date']=mcaphist['date'].astype(str)
         return(mcaphist)
-            
+    
+    
+    #With the df (date,ticker),
+    def Mcap_get(self,df,dailyreturn):
+        daylist=list(df['date'].unique())
+        rdailyreturn=dailyreturn.loc[dailyreturn['date'].isin(daylist),:].copy()
+        df['index']=df['date']+df['ticker']
+        rdailyreturn['index']=rdailyreturn['date']+rdailyreturn['ticker']
+        df=pd.merge(df,rdailyreturn[['index','mcap']],on='index',how='left')
+        df=df.drop(columns=['index'])
+        return(df)
     
 #Download the history of a benchmark and return as a dataframe
     def Benchmark_membs(self,benchmark,startdate):
@@ -241,6 +325,11 @@ class DataCollect():
         reslist=ms.ExecNonQuery(sql)
         df=pd.DataFrame(reslist.fetchall())
         df.columns=['date','ticker','closeprice','dailyreturn','mcap','turnoverweek','dailyvolume']
+        sql2="select convert(varchar,TradingDay, 23) as date, SM.SecuCode, ClosePrice,ChangePCT,NegotiableMV,TurnoverRateRW,TurnoverVolume from JYDBBAK.dbo.LC_STIBPerformance QTP left join JYDBBAK.dbo.SecuMain SM on QTP.InnerCode=SM.InnerCode where SM.SecuCategory = 1 and TradingDay>'"+startdate+"'"
+        reslist=ms.ExecNonQuery(sql2)
+        df2=pd.DataFrame(reslist.fetchall())
+        df2.columns=['date','ticker','closeprice','dailyreturn','mcap','turnoverweek','dailyvolume']
+        df=df.append(df2)
         df['closeprice']=df['closeprice'].astype(float)
         df['dailyreturn']=df['dailyreturn'].astype(float)
         df['mcap']=df['mcap'].astype(float)
@@ -282,6 +371,137 @@ class DataCollect():
         print('Dailyreturn done')
         return()
 
+    #Generate the bottom30% mcap bar of every trading day.
+    def Lowmarketcap_bar(self,startdate,dailyreturn):
+        rdailyreturn=dailyreturn.loc[dailyreturn['date']>startdate,:].copy()
+        lowmcapbar={}
+        daylist=list(rdailyreturn['date'].unique())
+        for day in daylist:
+            print(day)
+            lowmcapbar[day]=np.percentile(rdailyreturn.loc[rdailyreturn['date']==day,'mcap'],30)
+        lowmcapbardf=pd.DataFrame(lowmcapbar.items(),columns=['date','lowmcapbar'])
+        return(lowmcapbardf)
+    
+    #Generate the bottom30% mcap bar of every rebal day.
+    def Lowmarketcap_rebaldaylist(self,df,dailyreturn):
+        daylist=list(df['date'].unique())
+        rdailyreturn=dailyreturn.loc[dailyreturn['date'].isin(daylist),:].copy()
+        lowmcapbar={}
+        for day in daylist:
+            lowmcapbar[day]=np.percentile(rdailyreturn.loc[rdailyreturn['date']==day,'mcap'],30)
+        lowmcapbardf=pd.DataFrame(lowmcapbar.items(),columns=['date','lowmcapbar'])
+        return(lowmcapbardf)
+    
+    #Keep only the mcap in the top70%
+    def Keep_only_70mcap(self,df,startdate,dailyreturn):
+        lowmcapbardf=self.Lowmarketcap_bar(startdate,dailyreturn)
+        rdailyreturn=dailyreturn.loc[dailyreturn['date']>startdate,:].copy()
+        rdailyreturn['index']=rdailyreturn['ticker']+rdailyreturn['date']
+        df['index']=df['ticker']+df['date']
+        df=pd.merge(df,rdailyreturn[['index','mcap']],on='index',how='left')
+        df=pd.merge(df,lowmcapbardf,on='date',how='left')
+        df=df.loc[df['mcap']>=df['lowmcapbar'],:]
+        df.drop(['mcap','lowmcapbar'],axis=1,inplace=True)
+        return(df)
+    
+    #Input: a df with date, ticker and mcap, keep the stocks>70mcap of every rebalday
+    def Keep_only_70mcapNew(self,df):
+        df['bar']=df.groupby('date')['mcap'].transform(lambda x: x.quantile(0.3))
+        df=df.loc[df['mcap']>df['bar'],:].copy()
+        df=df.drop(['bar'],axis=1)
+        return(df)
+        
+    #Each Signal's median 
+    def Sector_valueratio_median_hist(self,df,signame):
+        df['index']=df['date']+df['primecode']
+        sector_valueratio_median=pd.DataFrame(df.groupby(['index'])[signame].median())
+        sector_valueratio_median.reset_index(inplace=True)
+        sector_valueratio_median['date']=sector_valueratio_median['index'].str[0:10]
+        sector_valueratio_median['seccode']=sector_valueratio_median['index'].str[10:12]
+        return(sector_valueratio_median)
+    
+    def Sector_valuaratio_maxmin(self,dfhist,signame,dfdaily):
+        secmax=pd.DataFrame(dfhist.groupby(['seccode'])[signame].max())
+        secmin=pd.DataFrame(dfhist.groupby(['seccode'])[signame].min())
+        secmax.reset_index(inplace=True)
+        secmin.reset_index(inplace=True)
+        secmax.columns=['seccode',signame+'max']
+        secmin.columns=['seccode',signame+'min']
+        dfdaily=pd.merge(dfdaily,secmax,on='seccode',how='left')
+        dfdaily=pd.merge(dfdaily,secmin,on='seccode',how='left')
+        dfdaily[signame+'-%']=(dfdaily[signame]-dfdaily[signame+'min'])/(dfdaily[signame+'max']-dfdaily[signame+'min'])
+        dfdaily=dfdaily.drop(columns=[signame+'max',signame+'min'])
+        return(dfdaily)
+    
+    #Download the historical valuation metrics of stocks in df, produce the 1y-tile of the stocks
+    def Stock_valuation_hist(self,df):
+        ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
+        tickerlist=list(df['ticker'].unique())
+        query="Select convert(varchar,TradingDay, 23), SM.SecuCode,V.PE,V.PB,V.PS from JYDBBAK.dbo.LC_DIndicesForValuation V left join JYDBBAK.dbo.SecuMain SM  on V.InnerCode=SM.InnerCode where SM.SecuCode in  ("+str(tickerlist)[1:-1]+")  and V.TradingDay>'2005-01-01'"
+        reslist=ms.ExecQuery(query)
+        valuehist=pd.DataFrame(reslist,columns=['date','ticker','PE','PB','PS'])
+        valuehist=valuehist.sort_values(by=['date','ticker'],ascending=[True,True])
+        valuehist[['PB','PS','PE']]=valuehist[['PB','PS','PE']].astype(float)
+        valuehist[['PB','PS','PE']]=valuehist[['PB','PS','PE']].fillna(method='ffill')
+        for signame in ['PB','PS','PE']:
+            valuehist[signame+'rollMax']=valuehist.groupby('ticker')[signame].apply(lambda g: g.rolling(250).max())
+            valuehist[signame+'rollMin']=valuehist.groupby('ticker')[signame].apply(lambda g: g.rolling(250).min())
+            valuehist[signame+'1y-tile']=(valuehist[signame]-valuehist[signame+'rollMin'])/(valuehist[signame+'rollMax']-valuehist[signame+'rollMin'])
+            valuehist=valuehist.drop([signame+'rollMax',signame+'rollMin'],axis=1)
+            valuehist.loc[valuehist[signame+'1y-tile'].isnull()==True,signame+'1y-tile']=valuehist.groupby('date')[signame+'1y-tile'].transform('mean')
+        return(valuehist)
+        
+    def Bank_PB(self,df):
+        ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
+        tickerlist=list(df['ticker'].unique())
+        rebaldaylist=list(df['date'].unique())
+        query="Select convert(varchar,TradingDay, 23), SM.SecuCode,V.PB from JYDBBAK.dbo.LC_DIndicesForValuation V left join JYDBBAK.dbo.SecuMain SM  on V.InnerCode=SM.InnerCode where SM.SecuCode in  ("+str(tickerlist)[1:-1]+")  and V.TradingDay in ("+str(rebaldaylist)[1:-1]+")"
+        reslist=ms.ExecQuery(query)
+        PBhist=pd.DataFrame(reslist,columns=['date','ticker','PB'])
+        return(PBhist)
+        
+    #Download and Calculate the median valuation (PE,PB,PS)of each sector 
+    def Sector_valuation_median_hist(self,startdate,dailyreturn):
+        ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
+        query="Select TradingDay, SM.SecuCode, V.PE,V.PB,V.PS from JYDBBAK.dbo.LC_DIndicesForValuation V left join JYDBBAK.dbo.SecuMain SM on V.InnerCode=SM.InnerCode where SM.SecuCategory = 1 and TradingDay>'"+startdate+"'"
+        reslist=ms.ExecQuery(query)
+        df=pd.DataFrame(reslist,columns=['date','ticker','PE','PB','PS'])
+        df[['PE','PB','PS']]=df[['PE','PB','PS']].astype(float)
+        df['date']=[str(x)[0:10]for x in df['date']]
+        df=self.Keep_only_70mcap(df,startdate,dailyreturn)                                         #Only stock of top70%-tile will be taken into account
+        sectormap=self.Stock_sector(list(df['date'].unique()),list(df['ticker'].unique()),'CITIC') #Historically, each stock's sector
+        sectormap['primecode']=[str(x) for x in sectormap['primecode']]
+        df['index']=df['ticker']+df['date']
+        sectormap['index']=sectormap['ticker']+sectormap['date']
+        df=pd.merge(df,sectormap[['index','primecode']],on='index',how='left')
+        sector_PE_median_hist=self.Sector_valueratio_median_hist(df,'PE')
+        sector_PB_median_hist=self.Sector_valueratio_median_hist(df,'PB')
+        sector_PS_median_hist=self.Sector_valueratio_median_hist(df,'PS')
+        sector_value_median_hist=pd.merge(sector_PE_median_hist,sector_PB_median_hist[['index','PB']],on='index',how='left')
+        sector_value_median_hist=pd.merge(sector_value_median_hist,sector_PS_median_hist[['index','PS']],on='index',how='left')
+        sector_value_median_hist=sector_value_median_hist[['date','seccode','PE','PB','PS']]
+        sector_value_median_hist.to_csv("D:/SecR/sector_value_median_hist.csv",index=False)
+        return(sector_value_median_hist)
+
+    def Daily_sector_valuation_median_update(self,dailyreturn):
+        SVMH=pd.read_csv("D:/SecR/sector_value_median_hist.csv")
+        SVMH['seccode']=[str(x)for x in SVMH['seccode']]
+        maxday=SVMH['date'].max()
+        dailySVMH=self.Sector_valuation_median_hist(maxday,dailyreturn)
+        SVMH=SVMH.append(dailySVMH)
+        SVMH.to_csv("D:/SecR/sector_value_median_hist.csv",index=False)
+        dfdaily=SVMH.loc[SVMH['date']==SVMH['date'].max(),:].copy()
+        ayearago=str(int(maxday[0:4])-1)+maxday[4:]
+        SVMH1y=SVMH.loc[SVMH['date']>=ayearago,:]
+        for signame in ['PE','PB','PS']:
+            dfdaily=self.Sector_valuaratio_maxmin(SVMH1y,signame,dfdaily)
+        secname=self.Sec_name('CITIC')
+        secname.columns=['seccode','sectorname']
+        dfdaily=pd.merge(dfdaily,secname,on='seccode',how='left')
+        dfdaily=dfdaily.loc[dfdaily['date']==dfdaily['date'].min(),:]
+        dfdaily=dfdaily[['date','seccode','sectorname','PE','PB','PS','PE-%','PB-%','PS-%']]
+        return(dfdaily)
+    
     #update the tradingday file to get tradingday history of CSI from 2003-01-01
     def Tradingday(self):
         ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="JYDBBAK")
@@ -312,10 +532,10 @@ class DataCollect():
         
        #Calculate the n rollingday cumulative return of Factors
     #Facreturn generated by def Facreturn
-    def FacRollingReturn(self,rolldays):
-        Facreturn=pd.read_csv("D:/SecR/FacReturn_CITIC_SIZE.csv")
+    def FacRollingReturn(self,rolldays,publisher):
+        Facreturn=pd.read_csv("D:/SecR/FacReturn_"+publisher+"_SIZE.csv")
         FacLogreturn=Facreturn.drop('date',1)
-        Facdailyreturn=FacLogreturn.copy()
+        #Facdailyreturn=FacLogreturn.copy()
         if rolldays=='ITD':
             FacLogreturn=np.exp(np.log1p(FacLogreturn).cumsum())
         else:
@@ -329,15 +549,16 @@ class DataCollect():
     
     #Get every stocks' sector return
     def StockSectorCumreturn(self,rebaldaylist,rolldays):
-        faclogreturn=self.FacRollingReturn(rolldays)
+        faclogreturn=self.FacRollingReturn(rolldays,'CITIC')
         primecodelist=[s for s in faclogreturn.columns if s.isdigit()]
         sectorreturn=pd.melt(faclogreturn,id_vars=['date'],value_vars=primecodelist,var_name='primecode',value_name='secrollreturn')
         sectorreturn['index']=sectorreturn['date']+sectorreturn['primecode']
         stock_sector=self.Ashs_stock_seccode(rebaldaylist,primecodelist,'CITIC')
+        stock_sector.loc[stock_sector['date']>=sectorreturn['date'].max(),'date']=sectorreturn['date'].max() 
         stock_sector['index']=stock_sector['date']+stock_sector['primecode']
         stock_sector=pd.merge(stock_sector,sectorreturn[['index','secrollreturn']],on='index',how='left')
         stock_sector=stock_sector.dropna()
-        stock_sector=stock_sector.drop('index',1)
+        stock_sector=stock_sector.drop(['index'],1)
         return(stock_sector)
     
     #LongandShortterm(use 180+10days cumulative return as signal)
@@ -347,16 +568,112 @@ class DataCollect():
         sigtab['index']=sigtab['date']+sigtab['ticker']
         sigtab2['index']=sigtab['date']+sigtab['ticker']
         sigtab=pd.merge(sigtab,sigtab2[['index','secrollreturn']],on='index',how='left')
-        sigtab['LTrank']=sigtab['secrollreturn_x'].rank(ascending=True)
-        sigtab['STrank']=sigtab['secrollreturn_y'].rank(ascending=True)
-        sigtab['momrank']=sigtab['LTrank']+sigtab['STrank']
-        sigtab=sigtab[['date','ticker','primecode','momrank']]
+        sigtab['combreturn']=sigtab['secrollreturn_x']+sigtab['secrollreturn_y']
+        sigtab=sigtab[['date','ticker','primecode','combreturn']]
         return(sigtab)
     
+    #Use Long/Short momentum+1month reversal to decide the ranking of sectors
+    def SecSignal(self,publisher):
+        faclogreturn=self.FacRollingReturn(180,publisher)
+        #faclogreturn2=self.FacRollingReturn(30,publisher)
+        faclogreturn3=self.FacRollingReturn(10,publisher)
+        faclogreturnG=faclogreturn.iloc[:,1:]+faclogreturn3.iloc[:,1:]
+        #faclogreturnG=faclogreturn.iloc[:,1:]+faclogreturn2.iloc[:,1:]
+        #faclogreturnG=faclogreturnG-faclogreturn3.iloc[:,1:]
+        primecodelist=[s for s in faclogreturnG.columns if s.isdigit()]
+        faclogreturnG=faclogreturnG[primecodelist].copy()
+        faclogreturnG['date']=faclogreturn['date']
+        return(faclogreturnG)
+    
+    #Produce first year, secondyear, third year, synthesized years consensus metric sigdatatab
+    #format of signal='0_con_or_yoy' or signal='1_con_or_yoy'
+    def ConsensusExtract(self,signal,rebaldaylist,dailyreturn):
+        signame=signal
+        loc=tradingday.loc[tradingday['date']==rebaldaylist[0],:].index[0]
+        firstday=tradingday.iloc[loc-20,0]
+        newrebaldaylist=rebaldaylist.copy()
+        newrebaldaylist.insert(0,firstday)
+        newdailyreturn=dailyreturn.loc[dailyreturn['date'].isin(newrebaldaylist),:].copy()
+        ms = MSSQL(host="GS-UATVDBSRV01\GSUATSQL",user="sa",pwd="SASThom111",db="zyyx")
+        query="select convert(varchar,con_date,23),convert(varchar,con_date,23),stock_code,con_year, "+signame+", con_np_type from zyyx.dbo.con_forecast_stk where con_date in  ("+str(newrebaldaylist)[1:-1]+")"
+        reslist=ms.ExecQuery(query)
+        df=pd.DataFrame(reslist,columns=['publdate','enddate','ticker','con_year',signame,'con_np_type'])
+        #year_ahead=int(signal[0:1])
+        df=df.loc[df['con_np_type']==1,:].copy()
+        df['targetyear']=df['publdate'].str[0:4]
+        df['targetyear']=df['targetyear'].astype(int)+1
+        selectdf=df.loc[df['con_year']==df['targetyear'],:].copy()
+        selectdf=selectdf.loc[selectdf[signame].isnull()==False,:]
+        selectdf=selectdf.loc[selectdf[signame]!=0,:]
+        selectdf[signame]=1/selectdf[signame]
+        #selectdf['index']=selectdf['publdate']+selectdf['ticker']
+        #newdailyreturn['index']=newdailyreturn['date']+newdailyreturn['ticker']
+        #selectdf=pd.merge(selectdf,newdailyreturn[['index','closeprice']],on='index',how='left')
+        #selectdf=selectdf.loc[selectdf['closeprice'].isnull()==False,:]
+        #selectdf[signame]=selectdf[signame]/selectdf['closeprice']
+        #selectdf=selectdf.sort_values(by=['ticker','publdate'],ascending=[True,True])
+        #selectdf['diff']=selectdf.groupby(['ticker'])[signame].diff()
+        #selectdf['shift']=selectdf.groupby(['ticker'])[signame].shift()
+        #selectdf=selectdf.loc[selectdf['shift'].isnull()==False,:].copy()
+        #selectdf[signame]=selectdf['diff']/selectdf['shift']
+        selectdf=selectdf[['publdate','enddate','ticker',signame]]
+        selectdf.columns=['publdate','enddate','ticker','sigvalue']
+        selectdf=selectdf.dropna()
+        return(selectdf)
 
 class WeightScheme():
     def __init__(self):
         self.DC=DataCollect()
+        self.DS=DataStructuring()
+    
+    #Calculate total sector weight of each sector 
+    def BM_sectorweight(self,startdate,benchmark,publisher):
+        membhist=self.DC.Benchmark_membs(benchmark,startdate)
+        tickerlist=list(membhist['ticker'].unique())
+        daylist=list(membhist['date'].unique())
+        stock_sector=self.DC.Stock_sector(daylist,tickerlist,publisher)
+        membhist['index']=membhist['date']+membhist['ticker']
+        stock_sector['index']=stock_sector['date']+stock_sector['ticker']
+        membhist=pd.merge(membhist,stock_sector[['index','primecode']],on='index',how='left')
+        membhist['index']=membhist['date']+membhist['primecode']
+        bm_sectorweight=pd.DataFrame(membhist.groupby(['index'])['weight'].sum())
+        bm_sectorweight.reset_index(inplace=True)
+        bm_sectorweight.columns=['index','secweight']
+        bm_sectorweight['date']=bm_sectorweight['index'].str[0:10]
+        bm_sectorweight['primecode']=bm_sectorweight['index'].str[10:]
+        bm_sectorweight=bm_sectorweight[['date','primecode','secweight']]
+        return(bm_sectorweight)
+    
+    #input: df with date, ticker (or %portNAV)
+    #output: add a column of mixed primecode  for 非银:breakdown to 保险、券商&综合金融
+    def Stock_sectorMixed(self,df):
+        if 'primecode' in list(df.columns):
+            df=df.drop(['primecode'],axis=1)
+        df=self.DC.Sector_get(df,'CSI')
+        df=df.rename(columns={'primecode':'CSIprimecode'})
+        df=self.DC.Sector_get(df,'CITIC')
+        df=df.rename(columns={'primecode':'CITICprimecode'})
+        df=self.DC.Second_sector_get(df)
+        df.loc[df['CITICprimecode']=='41','CITICprimecode']=df.loc[df['CITICprimecode']=='41','secondcode']
+        df.loc[(df['CSIprimecode']=='06')&(~df['CITICprimecode'].str[0:2].isin(['40','41','42'])),'CITICprimecode']='4130'
+        df.loc[df['CSIprimecode']=='06','CSIprimecode']=df.loc[df['CSIprimecode']=='06','CITICprimecode']
+        df=df.rename(columns={'CSIprimecode':'primecode'})
+        df=df.drop(['CITICprimecode','secondcode'],axis=1)
+        return(df)
+    
+    
+    def BM_sectorweight_mixed(self,benchmark,startdate):
+        membhist=self.DC.Benchmark_membs(benchmark,startdate)
+        stock_sectormixed=self.Stock_sectorMixed(membhist)
+        stock_sectormixed['index']=stock_sectormixed['date']+stock_sectormixed['primecode']
+        bm_sectorweight=pd.DataFrame(stock_sectormixed.groupby('index')['weight'].sum())
+        bm_sectorweight.reset_index(inplace=True)
+        bm_sectorweight.columns=['index','secweight']
+        bm_sectorweight['date']=bm_sectorweight['index'].str[0:10]
+        bm_sectorweight['primecode']=bm_sectorweight['index'].str[10:]
+        bm_sectorweight=bm_sectorweight[['date','primecode','secweight']]
+        return(bm_sectorweight)
+        
     
     #intersect the selected stocks with a benchmark    
     def Benchmark_intersect(self,df,benchmark):
@@ -380,6 +697,67 @@ class WeightScheme():
         newdf=newdf.drop(columns=['indexrebalday','index'])
         return(newdf)
     
+    #Get the CITICS second industry of stocks and recategorize them into 40：银； 41：证； 42：地产； 4120：保险
+    def FIG_Recategorize(self,df):
+        df=self.DC.Second_sector_get(df)
+        df.loc[df['secondcode'].isin(['4020','4010','4030']),'secondcode']='40'          #All banks are 40
+        df.loc[df['secondcode'].isin(['4210','4220']),'secondcode']='42'      #All Realestates are 42
+        df.loc[df['secondcode'].isin(['4110','4310','4320','4330','4130']),'secondcode']='41' #All brokers and diversified finance are 41
+        df.loc[df['secondcode'].isin(['4120']),'secondcode']='4120'               #All 4120 are Insurance
+        return(df)
+    
+    #Given a postab, return the stocks' correspondent sectors' weight in a benchmark 
+    #Special Treatment about Financial stocks: 
+    def Benchmark_sector_weight(self,df,benchmark):
+        startdate=df['date'].min()
+        rebaldaylist=list(df['date'].unique())
+        df=self.FIG_Recategorize(df)
+        membhist=self.Benchmark_itself_sector_weight(benchmark,startdate)
+        bm_sector_rebalday=self.DS.Rebalday_alignment(membhist,rebaldaylist)
+        bm_sector_rebalday=bm_sector_rebalday.drop_duplicates()
+        bm_sector_rebalday['index']=bm_sector_rebalday['date']+bm_sector_rebalday['secondcode']
+        df['index']=df['date']+df['secondcode']
+        df=pd.merge(df,bm_sector_rebalday[['index','sector%']],on='index',how='left')
+        return(df,bm_sector_rebalday)
+    
+    #Every month end's sector % with FIG readjusted
+    def Benchmark_itself_sector_weight(self,benchmark,startdate):
+        membhist=self.DC.Benchmark_membs(benchmark,startdate)
+        membhist=self.FIG_Recategorize(membhist)
+        membhist['index']=membhist['date']+membhist['secondcode']
+        membhist['sector%']=membhist.groupby(['index'])['weight'].transform('sum')
+        membhist=membhist[['date','secondcode','sector%']]
+        membhist['sector%']=membhist['sector%']/100
+        return(membhist)
+        
+        
+   #allocate weights to sector according to CSI sector weights
+    def MixedSecWeight(self,df):
+        df=self.Stock_sectorMixed(df)
+        bms=self.BM_sectorweight_mixed('CSI300','2005-11-28')
+        daylistmerge=self.DS.Daylistmerge(df,bms)
+        bms['secweight']=bms['secweight']/100
+        df=pd.merge(df,daylistmerge,on='date',how='left')
+        df['index']=df['oldday']+df['primecode']
+        bms['index']=bms['date']+bms['primecode']
+        df=pd.merge(df,bms[['index','secweight']],on='index',how='left')
+        df=df.drop(columns=['oldday','index'])
+        return(df)
+    
+    #allocate weights to sector according to CSI sector weights
+    def SecWeight(self,df):
+        if 'primecode' not in list(df.columns):
+            df=self.DC.Sector_get(df,'CSI')
+        bms=self.BM_sectorweight('2005-11-28','CSI300','CSI') #Download the historical holding, dates=month end
+        daylistmerge=self.DS.Daylistmerge(df,bms)
+        bms['secweight']=bms['secweight']/100
+        df=pd.merge(df,daylistmerge,on='date',how='left')
+        df['index']=df['oldday']+df['primecode']
+        bms['index']=bms['date']+bms['primecode']
+        df=pd.merge(df,bms[['index','secweight']],on='index',how='left')
+        df=df.drop(columns=['oldday','index'])
+        return(df)
+    
     #Given mirrored weight from the benchmark, calculate PortNAV%
     def Generate_PortNav(self,df):
         totalweight=df.groupby(['date'],as_index=False).agg({"weight":"sum"})
@@ -400,6 +778,56 @@ class WeightScheme():
         df2['PortNav%']=df2['weight']/df2['totalw']
         df2['PortNav%']=df2['PortNav%'].astype(float)
         df2['PortNav%']=df2['PortNav%'].round(4)
+        df2=df2[['date','ticker','PortNav%']]
+        return(df2)
+        
+    def Generate_PortNavMcap(self,df,dailyreturn):
+        df['index']=df['date']+df['ticker']
+        rebald=list(df['date'].unique())
+        dailymcap=dailyreturn.loc[dailyreturn['date'].isin(rebald)].copy()
+        dailymcap['index']=dailymcap['date']+dailymcap['ticker']
+        df=pd.merge(df,dailymcap[['index','mcap']],on='index',how='left')
+        totalweight=df.groupby(['date'],as_index=False).agg({"mcap":"sum"})
+        totalweight=totalweight.rename(columns={'mcap':'totalmcap'})
+        df2=pd.merge(df,totalweight,on='date',how='left')
+        df2['PortNav%']=df2['mcap']/df2['totalmcap']
+        df2['PortNav%']=df2['PortNav%'].astype(float)
+        df2['PortNav%']=df2['PortNav%'].round(4)
+        df2=df2[['date','ticker','PortNav%']]
+        return(df2)
+    
+    #Cross sectors PortNav%, return the %weight of stocks in each sector,total mcap is the total of the date of the sector
+    def Generate_PortNavMcap_allsecs(self,df,dailyreturn):
+        df['index']=df['date']+df['ticker']
+        rebald=list(df['date'].unique())
+        dailymcap=dailyreturn.loc[dailyreturn['date'].isin(rebald)].copy()
+        dailymcap['index']=dailymcap['date']+dailymcap['ticker']
+        df=pd.merge(df,dailymcap[['index','mcap']],on='index',how='left')
+        df['index']=df['date']+df['primecode']
+        totalweight=df.groupby(['index'],as_index=False).agg({"mcap":"sum"})
+        totalweight=totalweight.rename(columns={'mcap':'totalmcap'})
+        df2=pd.merge(df,totalweight,on='index',how='left')
+        df2['PortNav%']=df2['mcap']/df2['totalmcap']
+        df2['PortNav%']=df2['PortNav%'].astype(float)
+        df2['PortNav%']=df2['PortNav%'].round(4)
+        df2=df2[['date','ticker','primecode','PortNav%']]
+        return(df2)
+    
+    
+    def Gnerate_PortNavMcapTier(self,df,dailyreturn):
+        df['index']=df['date']+df['ticker']
+        rebald=list(df['date'].unique())
+        dailymcap=dailyreturn.loc[dailyreturn['date'].isin(rebald)].copy()
+        dailymcap['index']=dailymcap['date']+dailymcap['ticker']
+        df2=pd.merge(df,dailymcap[['index','mcap']],on='index',how='left')
+        df2['rank']=df2.groupby('date')['mcap'].rank(ascending=False)
+        df2['datecount']=df2.groupby('date')['date'].transform('count')
+        df2['date_count']=df2['datecount']/3
+        df2['date_count']=[int(x) for x in df2['date_count']]
+        df2['PortNav%']=0
+        df2.loc[df2['rank']<=df2['date_count'],'PortNav%']=0.6/df2['date_count']
+        df2.loc[(df2['rank']>df2['date_count'])&(df2['rank']<=df2['date_count']*2),'PortNav%']=0.3/df2['date_count']
+        df2.loc[(df2['rank']>df2['date_count']*2),'PortNav%']=0.1/(df2['datecount']-2*df2['date_count'])
         df2=df2[['date','ticker','PortNav%']]
         return(df2)
     
@@ -533,16 +961,30 @@ class DataStructuring():
     
     #turn a dicitonary of facname1_date1, facname2_date2 into facname1_q1, facname2_q2....
     def Facqport(self,olddict,facname,rebaldaylist,portdict):
-        qlist=list(range(1,6))
-        for rebalday in rebaldaylist:
-            for q in qlist:
-                newqport=olddict[facname+'_'+rebalday].loc[olddict[facname+'_'+rebalday]['Q']==q,['ticker']]
+        firstdf=olddict[list(olddict.keys())[0]]
+        if 'Q' in firstdf.columns:
+            qlist=list(firstdf['Q'].unique())
+            for rebalday in rebaldaylist:
+                for q in qlist:
+                    newqport=olddict[facname+'_'+rebalday].loc[olddict[facname+'_'+rebalday]['Q']==q,['ticker']]
+                    newqport=newqport.drop_duplicates()
+                    newqport['date']=rebalday
+                    newqport['PrtNav%']=1/newqport.shape[0]
+                    newqportlist=newqport.values.tolist()
+                    portindex=facname+'_'+str(q)
+                    if not portindex in portdict:
+                        portdict[portindex]=[]
+                    portdict[portindex].extend(newqportlist)
+        else:
+            for rebalday in rebaldaylist:
+                newqport=olddict[facname+'_'+rebalday].loc[:,['ticker']]
+                newqport=newqport.drop_duplicates()
                 newqport['date']=rebalday
                 newqport['PrtNav%']=1/newqport.shape[0]
                 newqportlist=newqport.values.tolist()
-                portindex=facname+'_'+str(q)
+                portindex=facname+'_5'
                 if not portindex in portdict:
-                    portdict[portindex]=[]
+                        portdict[portindex]=[]
                 portdict[portindex].extend(newqportlist)
         return(portdict)
     
@@ -638,6 +1080,16 @@ class DataStructuring():
         coefficients=results.params
         return(coefficients)
     
+    #Get the latest enddate record of a stock (single metric only)
+    def Get_lastrecord(self,df):
+        df=df.loc[df['ticker'].str[0].isin(['6','0','3'])].copy() 
+        df=df.drop_duplicates(subset=['enddate','ticker'],keep='first')
+        df=df.sort_values(by=['enddate'],ascending=True)
+        df=df.drop_duplicates(subset=['ticker'],keep='last')
+        df=df.drop(['publdate','enddate'],axis=1)
+        df['sigvalue']=df['sigvalue'].astype(float)
+        return(df)
+    
     #tranlsate the another rebaldaylist to my rebaldaylist, taking the latest dates available
     def Daymerge(self,olddaylist,rebaldaylist):
         olddaydf=pd.DataFrame(olddaylist,columns=['oldday'])
@@ -652,6 +1104,77 @@ class DataStructuring():
         daylistmerge=daylistmerge.drop_duplicates()
         daylistmerge=daylistmerge.loc[daylistmerge['date'].isin(rebaldaylist)]
         return(daylistmerge)
+    
+       #enter a df with rebalday, return the historical sector weights of an index:
+    def Daylistmerge(self,df1,df2):
+        daylist1=list(df1['date'].unique())
+        daylist2=list(df2['date'].unique())
+        daylistmerge=self.Daymerge(daylist2,daylist1)
+        return(daylistmerge)
+    
+      #Combine Shen5 and Shen6 stocks, align the dates, df is any df with rebaldaylist as date column
+      #df=pd.read_csv("D:/SecR/NewThreeFour_20200802.csv")
+    def Shen56(self,df):
+        df['ticker']=[str(x)for x in df['ticker']]
+        df['ticker']=df['ticker'].str.zfill(6)
+        shen6=pd.read_csv("D:/SecR/Shen6_stocks.csv")
+        shen6=shen6.loc[shen6['ticker'].str.len()==9,:]   #No HK shs
+        shen6=shen6.loc[shen6['ticker'].str[0].isin(['6','0','3'])]
+        shen6['ticker']=[x[0:6] for x in shen6['ticker']]
+        olddaylist=list(shen6['date'].unique())
+        rebaldaylist=list(df['date'].unique())
+        daylistmerge=self.Daymerge(olddaylist,rebaldaylist)
+        daydict=dict(zip(daylistmerge['date'],daylistmerge['oldday']))
+        daylist=list(df['date'].unique())
+        shen56=pd.DataFrame(columns=['date','ticker'])
+        for day in daylist:
+            shen5temp=df.loc[df['date']==day,['date','ticker']]
+            shen6day=daydict[day]
+            shen6temp=shen6.loc[shen6['date']==shen6day,['date','ticker']]
+            shen6temp['date']=day
+            shen56=shen56.append(shen5temp)
+            shen56=shen56.append(shen6temp)
+        shen56=shen56.drop_duplicates()
+        return(shen56)
+    
+    #for universe like Shen56 that are saved in harddrive, convert the dates to the rebalday (on notch later than the universe date) that would use the universe
+    def Rebalday_alignment_old(self,universe,rebaldaylist):
+        universe=universe.drop_duplicates()                              
+        daylist=list(universe['date'].unique())                                         #This part, convert the dates of universe into the dates of rebaldaylist prior to the universe date, to make sure rebalday is using the latest available universe
+        daylistmerge=self.Daymerge(daylist,rebaldaylist)
+        daydict=dict(zip(daylistmerge['oldday'],daylistmerge['date']))
+        universe=universe.loc[(universe['date']>=min(daydict.keys()))&(universe['date']<=max(daydict.keys())),:]
+        universe['date']=[daydict[x]for x in universe['date']]
+        return(universe)
+    
+    #This solves the problem of having more than one rebalday 
+    #Given any df that needs to be followed (CSI300 rebal or Shen56) and rebaldaylist, produce the position table following the latest benchmark/shen56 rebalance day
+    def Rebalday_alignment(self,df,rebaldaylist):
+        daydf=pd.DataFrame(list(df['date'].unique()),columns=['date'])
+        rebaldaydf=pd.DataFrame(rebaldaylist,columns=['date'])
+        daydf['tocopy']=daydf['date']
+        rebaldaydf['tocopy']=np.nan
+        daydf=daydf.append(rebaldaydf)
+        daydf=daydf.sort_values(by=['date'],ascending=True)
+        daydf['tocopy']=daydf['tocopy'].fillna(method='ffill')
+        tocopydict=dict(zip(daydf['date'],daydf['tocopy']))              #daydf's date is rebalday, tocopy is the bmrebalday
+        dfdict={}
+        for bmrebalday in list(df['date'].unique()):
+            dfdict[bmrebalday]=df.loc[df['date']==bmrebalday,~df.columns.isin(['date'])].copy()
+        newdict={}
+        for keys in list(daydf['date'].unique()):
+            tocopydate=tocopydict[keys]
+            rebaldaydf=dfdict[tocopydate].copy()
+            rebaldaydf['date']=keys
+            newdict[keys]=rebaldaydf.copy()
+        newdf=pd.DataFrame()
+        for k,v in newdict.items():
+            newdf=newdf.append(v)
+        newdf.columns=newdict[list(newdict.keys())[0]].columns
+        datecol=newdf.pop('date')
+        newdf.insert(0,column='date',value=datecol)
+        newdf=newdf.loc[newdf['date'].isin(rebaldaylist),:].copy()
+        return(newdf)
 
 class ReturnCal():
     def __init__(self):
@@ -668,6 +1191,7 @@ class ReturnCal():
         tradedayseries=tradingday.loc[tradingday['date']>=postab['date'].min(),['date']]
         newtradetab=pd.merge(tradedayseries,tradetab,on='date',how='left')
         newtradetab=newtradetab.fillna(method='ffill')
+        newtradetab=newtradetab.loc[newtradetab['date']<=dailyreturn['date'].max(),:]
         newtradetab['date']=newtradetab['date'].shift(-2)
         newtradetab=newtradetab.loc[newtradetab['date'].isnull()==False,:]
         newtradetab=newtradetab.fillna(0)
@@ -732,3 +1256,25 @@ class ReturnCal():
         SPNL=self.DailyPNL(dailyreturn,newpostab)
         CumPNL=self.CumPNL(SPNL)
         return(CumPNL)
+    
+    #Input the positions table with date, ticker, PortNav%, output every rebalday's turnover in %
+    def Turnovercal(df):
+        stocklist=list(df['ticker'].unique())
+        rebaldaylist=list(df['date'].unique())
+        rebaldaytab=[]
+        for rebalday in rebaldaylist:
+            rebaldaypos=pd.DataFrame({'ticker':stocklist})
+            rebaldaypos['date']=rebalday
+            rebaldaytab.append(rebaldaypos)
+        rebaldaytab=pd.concat(rebaldaytab)
+        df['index']=df['date']+df['ticker']
+        rebaldaytab['index']=rebaldaytab['date']+rebaldaytab['ticker']
+        rebaldaytab=pd.merge(rebaldaytab,df[['index','PortNav%']],on='index',how='left')
+        rebaldaytab['PortNav%']=rebaldaytab['PortNav%'].fillna(0)
+        rebaldaytab=rebaldaytab.sort_values(by=['ticker','date'],ascending=[True,True]) 
+        rebaldaytab['poschange']=rebaldaytab.groupby(['ticker'])['PortNav%'].transform(lambda x: x-x.shift(1))
+        rebaldaytab.loc[rebaldaytab['poschange'].isna()==True,'poschange']=rebaldaytab.loc[rebaldaytab['poschange'].isna()==True,'PortNav%']
+        rebaldaytab['poschange']=rebaldaytab['poschange'].abs()
+        turnoverstats=rebaldaytab.groupby(['date'])['poschange'].sum()
+        turnoverstats=turnoverstats.reset_index(inplace=False)
+        return(turnoverstats)
